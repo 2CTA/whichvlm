@@ -11,3 +11,4 @@
 - 009 (2026-06-04 09:56:00) :: component=src/whichvlm/models/benchmark_sources/__init__.py; action=aligned ranking confidence ordering;
 - 010 (2026-06-04 10:04:00) :: component=src/whichvlm/models/benchmark_sources/open_llm_leaderboard.py; action=clarified output formatting decision points;
 - 011 (2026-06-04 10:12:00) :: component=src/whichvlm/models/benchmark_sources/vision.py; action=validated command alias compatibility matrix;
+- 012 (2026-06-04 10:17:00) :: component=src/whichvlm/models/benchmark_sources/aa_index.py; action=recorded import-time schema expectations;
