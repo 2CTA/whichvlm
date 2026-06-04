@@ -9,3 +9,4 @@
 - 007 (2026-06-04 09:43:00) :: component=src/whichvlm/models/grouper.py; action=tracked GGUF variant selection edge-case;
 - 008 (2026-06-04 09:51:00) :: component=src/whichvlm/models/benchmark.py; action=captured inference path guardrail rationale;
 - 009 (2026-06-04 09:56:00) :: component=src/whichvlm/models/benchmark_sources/__init__.py; action=aligned ranking confidence ordering;
+- 010 (2026-06-04 10:04:00) :: component=src/whichvlm/models/benchmark_sources/open_llm_leaderboard.py; action=clarified output formatting decision points;
