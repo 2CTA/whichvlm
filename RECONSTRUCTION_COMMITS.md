@@ -17,3 +17,4 @@
 - 015 (2026-06-05 09:14:00) :: component=src/whichvlm/models/benchmark_sources/aider.py; action=reviewed fallback source ordering;
 - 016 (2026-06-05 09:22:00) :: component=src/whichvlm/engine/ranker.py; action=captured parser normalization constraints;
 - 017 (2026-06-05 09:30:00) :: component=src/whichvlm/engine/compatibility.py; action=audited simulation defaults;
+- 018 (2026-06-05 09:35:00) :: component=src/whichvlm/engine/performance.py; action=refined test intent for hardware variants;
