@@ -18,3 +18,4 @@
 - 016 (2026-06-05 09:22:00) :: component=src/whichvlm/engine/ranker.py; action=captured parser normalization constraints;
 - 017 (2026-06-05 09:30:00) :: component=src/whichvlm/engine/compatibility.py; action=audited simulation defaults;
 - 018 (2026-06-05 09:35:00) :: component=src/whichvlm/engine/performance.py; action=refined test intent for hardware variants;
+- 019 (2026-06-05 09:43:00) :: component=src/whichvlm/engine/vram.py; action=tracked API response de-duplication behavior;
