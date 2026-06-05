@@ -14,3 +14,4 @@
 - 012 (2026-06-04 10:17:00) :: component=src/whichvlm/models/benchmark_sources/aa_index.py; action=recorded import-time schema expectations;
 - 013 (2026-06-05 09:01:00) :: component=src/whichvlm/models/benchmark_sources/livebench.py; action=documented memory estimation guardrails;
 - 014 (2026-06-05 09:09:00) :: component=src/whichvlm/models/benchmark_sources/chatbot_arena.py; action=noted regression risk around family demotion;
+- 015 (2026-06-05 09:14:00) :: component=src/whichvlm/models/benchmark_sources/aider.py; action=reviewed fallback source ordering;
