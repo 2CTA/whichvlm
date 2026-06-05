@@ -22,3 +22,4 @@
 - 020 (2026-06-05 09:51:00) :: component=src/whichvlm/engine/memory.py; action=noted portability concerns for json cache;
 - 021 (2026-06-05 09:56:00) :: component=src/whichvlm/runtime/llama_cpp.py; action=documented benchmark evidence assumptions;
 - 022 (2026-06-05 10:04:00) :: component=src/whichvlm/runtime/mlx.py; action=noted quantization boundary handling;
+- 023 (2026-06-05 10:12:00) :: component=src/whichvlm/runtime/transformers.py; action=reviewed cache key derivation logic;
