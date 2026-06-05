@@ -44,5 +44,5 @@ pulled forward when they do not change the VLM contract. Product behavior should
 follow `whichvlm`'s VLM package graph, vision workload, backend priorities, model
 inventory, and runtime constraints.
 
-## 2026-06-04 14:00 checkpoint
-- Added the final bootstrap checkpoint entry for CPU-first architecture wiring and core scaffolding validation.
+## 2026-06-05 14:00 checkpoint
+- Added GPU backend matrix notes covering Apple, NVIDIA, and AMD probing behaviors to keep platform coverage consistent.
