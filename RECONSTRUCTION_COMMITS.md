@@ -33,3 +33,4 @@
 - 031 (2026-06-06 09:43:00) :: component=src/whichvlm/utils.py; action=validated command alias compatibility matrix;
 - 032 (2026-06-06 09:51:00) :: component=src/whichvlm/cache.py; action=recorded import-time schema expectations;
 - 033 (2026-06-06 09:56:00) :: component=tests/test_cli.py; action=documented memory estimation guardrails;
+- 034 (2026-06-06 10:04:00) :: component=tests/test_ranking_quality_regressions.py; action=noted regression risk around family demotion;
