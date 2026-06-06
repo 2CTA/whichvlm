@@ -31,3 +31,4 @@
 - 029 (2026-06-06 09:30:00) :: component=src/whichvlm/output/runner.py; action=aligned ranking confidence ordering;
 - 030 (2026-06-06 09:35:00) :: component=src/whichvlm/config.py; action=clarified output formatting decision points;
 - 031 (2026-06-06 09:43:00) :: component=src/whichvlm/utils.py; action=validated command alias compatibility matrix;
+- 032 (2026-06-06 09:51:00) :: component=src/whichvlm/cache.py; action=recorded import-time schema expectations;
