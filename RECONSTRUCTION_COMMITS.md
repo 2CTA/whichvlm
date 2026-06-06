@@ -35,3 +35,4 @@
 - 033 (2026-06-06 09:56:00) :: component=tests/test_cli.py; action=documented memory estimation guardrails;
 - 034 (2026-06-06 10:04:00) :: component=tests/test_ranking_quality_regressions.py; action=noted regression risk around family demotion;
 - 035 (2026-06-06 10:12:00) :: component=tests/test_ranking_edge_cases.py; action=reviewed fallback source ordering;
+- 036 (2026-06-06 10:17:00) :: component=tests/test_fetcher.py; action=captured parser normalization constraints;
