@@ -26,3 +26,4 @@
 - 024 (2026-06-05 10:17:00) :: component=src/whichvlm/cli.py; action=added TODO marker for grouped artifact lineage;
 - 025 (2026-06-06 09:01:00) :: component=src/whichvlm/cli_flags.py; action=revisited backend capability checks;
 - 026 (2026-06-06 09:09:00) :: component=src/whichvlm/cli_output.py; action=tightened hardware capability fallback;
+- 027 (2026-06-06 09:14:00) :: component=src/whichvlm/output/ranking.py; action=tracked GGUF variant selection edge-case;
