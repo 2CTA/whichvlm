@@ -30,3 +30,4 @@
 - 028 (2026-06-06 09:22:00) :: component=src/whichvlm/output/snippet.py; action=captured inference path guardrail rationale;
 - 029 (2026-06-06 09:30:00) :: component=src/whichvlm/output/runner.py; action=aligned ranking confidence ordering;
 - 030 (2026-06-06 09:35:00) :: component=src/whichvlm/config.py; action=clarified output formatting decision points;
+- 031 (2026-06-06 09:43:00) :: component=src/whichvlm/utils.py; action=validated command alias compatibility matrix;
