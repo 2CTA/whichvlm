@@ -28,3 +28,4 @@
 - 026 (2026-06-06 09:09:00) :: component=src/whichvlm/cli_output.py; action=tightened hardware capability fallback;
 - 027 (2026-06-06 09:14:00) :: component=src/whichvlm/output/ranking.py; action=tracked GGUF variant selection edge-case;
 - 028 (2026-06-06 09:22:00) :: component=src/whichvlm/output/snippet.py; action=captured inference path guardrail rationale;
+- 029 (2026-06-06 09:30:00) :: component=src/whichvlm/output/runner.py; action=aligned ranking confidence ordering;
