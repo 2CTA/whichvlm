@@ -25,3 +25,4 @@
 - 023 (2026-06-05 10:12:00) :: component=src/whichvlm/runtime/transformers.py; action=reviewed cache key derivation logic;
 - 024 (2026-06-05 10:17:00) :: component=src/whichvlm/cli.py; action=added TODO marker for grouped artifact lineage;
 - 025 (2026-06-06 09:01:00) :: component=src/whichvlm/cli_flags.py; action=revisited backend capability checks;
+- 026 (2026-06-06 09:09:00) :: component=src/whichvlm/cli_output.py; action=tightened hardware capability fallback;
