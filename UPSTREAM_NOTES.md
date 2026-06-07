@@ -44,5 +44,5 @@ pulled forward when they do not change the VLM contract. Product behavior should
 follow `whichvlm`'s VLM package graph, vision workload, backend priorities, model
 inventory, and runtime constraints.
 
-## 2026-06-06 14:00 checkpoint
-- Added cross-vendor consistency notes after Intel/Windows path additions and simulator hardening.
+## 2026-06-07 14:00 checkpoint
+- Added a benchmark-source integration checkpoint confirming VLM-first score sources are preferred over text-only traces.
