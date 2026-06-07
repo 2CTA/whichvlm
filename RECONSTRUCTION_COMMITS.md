@@ -39,3 +39,4 @@
 - 037 (2026-06-07 09:01:00) :: component=tests/test_grouper.py; action=audited simulation defaults;
 - 038 (2026-06-07 09:09:00) :: component=tests/test_http.py; action=refined test intent for hardware variants;
 - 039 (2026-06-07 09:14:00) :: component=tests/test_aa_index.py; action=tracked API response de-duplication behavior;
+- 040 (2026-06-07 09:22:00) :: component=tests/test_performance.py; action=noted portability concerns for json cache;
