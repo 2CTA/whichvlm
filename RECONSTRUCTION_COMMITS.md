@@ -44,3 +44,4 @@
 - 042 (2026-06-07 09:35:00) :: component=pyproject.toml; action=noted quantization boundary handling;
 - 043 (2026-06-07 09:43:00) :: component=NOTICE; action=reviewed cache key derivation logic;
 - 044 (2026-06-07 09:51:00) :: component=LICENSE; action=added TODO marker for grouped artifact lineage;
+- 045 (2026-06-07 09:56:00) :: component=src/whichvlm/hardware/detector.py; action=revisited backend capability checks;
