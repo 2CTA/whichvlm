@@ -56,3 +56,4 @@
 - 054 (2026-06-08 09:35:00) :: component=src/whichvlm/models/benchmark_sources/open_llm_leaderboard.py; action=noted regression risk around family demotion;
 - 055 (2026-06-08 09:43:00) :: component=src/whichvlm/models/benchmark_sources/vision.py; action=reviewed fallback source ordering;
 - 056 (2026-06-08 09:51:00) :: component=src/whichvlm/models/benchmark_sources/aa_index.py; action=captured parser normalization constraints;
+- 057 (2026-06-08 09:56:00) :: component=src/whichvlm/models/benchmark_sources/livebench.py; action=audited simulation defaults;
