@@ -50,3 +50,4 @@
 - 048 (2026-06-07 10:17:00) :: component=src/whichvlm/models/fetcher.py; action=captured inference path guardrail rationale;
 - 049 (2026-06-08 09:01:00) :: component=src/whichvlm/models/types.py; action=aligned ranking confidence ordering;
 - 050 (2026-06-08 09:09:00) :: component=src/whichvlm/models/lineage.py; action=clarified output formatting decision points;
+- 051 (2026-06-08 09:14:00) :: component=src/whichvlm/models/grouper.py; action=validated command alias compatibility matrix;
