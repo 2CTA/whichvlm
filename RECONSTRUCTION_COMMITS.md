@@ -58,3 +58,4 @@
 - 056 (2026-06-08 09:51:00) :: component=src/whichvlm/models/benchmark_sources/aa_index.py; action=captured parser normalization constraints;
 - 057 (2026-06-08 09:56:00) :: component=src/whichvlm/models/benchmark_sources/livebench.py; action=audited simulation defaults;
 - 058 (2026-06-08 10:04:00) :: component=src/whichvlm/models/benchmark_sources/chatbot_arena.py; action=refined test intent for hardware variants;
+- 059 (2026-06-08 10:12:00) :: component=src/whichvlm/models/benchmark_sources/aider.py; action=tracked API response de-duplication behavior;
