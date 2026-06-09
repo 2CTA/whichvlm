@@ -68,3 +68,4 @@
 - 066 (2026-06-09 09:35:00) :: component=src/whichvlm/runtime/mlx.py; action=tightened hardware capability fallback;
 - 067 (2026-06-09 09:43:00) :: component=src/whichvlm/runtime/transformers.py; action=tracked GGUF variant selection edge-case;
 - 068 (2026-06-09 09:51:00) :: component=src/whichvlm/cli.py; action=captured inference path guardrail rationale;
+- 069 (2026-06-09 09:56:00) :: component=src/whichvlm/cli_flags.py; action=aligned ranking confidence ordering;
