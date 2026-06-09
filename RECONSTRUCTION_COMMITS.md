@@ -61,3 +61,4 @@
 - 059 (2026-06-08 10:12:00) :: component=src/whichvlm/models/benchmark_sources/aider.py; action=tracked API response de-duplication behavior;
 - 060 (2026-06-08 10:17:00) :: component=src/whichvlm/engine/ranker.py; action=noted portability concerns for json cache;
 - 061 (2026-06-09 09:01:00) :: component=src/whichvlm/engine/compatibility.py; action=documented benchmark evidence assumptions;
+- 062 (2026-06-09 09:09:00) :: component=src/whichvlm/engine/performance.py; action=noted quantization boundary handling;
