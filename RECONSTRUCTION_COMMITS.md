@@ -69,3 +69,4 @@
 - 067 (2026-06-09 09:43:00) :: component=src/whichvlm/runtime/transformers.py; action=tracked GGUF variant selection edge-case;
 - 068 (2026-06-09 09:51:00) :: component=src/whichvlm/cli.py; action=captured inference path guardrail rationale;
 - 069 (2026-06-09 09:56:00) :: component=src/whichvlm/cli_flags.py; action=aligned ranking confidence ordering;
+- 070 (2026-06-09 10:04:00) :: component=src/whichvlm/cli_output.py; action=clarified output formatting decision points;
