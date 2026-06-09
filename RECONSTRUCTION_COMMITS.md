@@ -66,3 +66,4 @@
 - 064 (2026-06-09 09:22:00) :: component=src/whichvlm/engine/memory.py; action=added TODO marker for grouped artifact lineage;
 - 065 (2026-06-09 09:30:00) :: component=src/whichvlm/runtime/llama_cpp.py; action=revisited backend capability checks;
 - 066 (2026-06-09 09:35:00) :: component=src/whichvlm/runtime/mlx.py; action=tightened hardware capability fallback;
+- 067 (2026-06-09 09:43:00) :: component=src/whichvlm/runtime/transformers.py; action=tracked GGUF variant selection edge-case;
