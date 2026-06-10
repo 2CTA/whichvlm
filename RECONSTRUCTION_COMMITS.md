@@ -76,3 +76,4 @@
 - 074 (2026-06-10 09:09:00) :: component=src/whichvlm/config.py; action=noted regression risk around family demotion;
 - 075 (2026-06-10 09:14:00) :: component=src/whichvlm/utils.py; action=reviewed fallback source ordering;
 - 076 (2026-06-10 09:22:00) :: component=src/whichvlm/cache.py; action=captured parser normalization constraints;
+- 077 (2026-06-10 09:30:00) :: component=tests/test_cli.py; action=audited simulation defaults;
