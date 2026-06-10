@@ -44,5 +44,5 @@ pulled forward when they do not change the VLM contract. Product behavior should
 follow `whichvlm`'s VLM package graph, vision workload, backend priorities, model
 inventory, and runtime constraints.
 
-## 2026-06-09 14:00 checkpoint
-- Added parser-hardening notes for model metadata, architecture, tags, and lineage extraction behavior.
+## 2026-06-10 14:00 checkpoint
+- Added package graph milestone notes about merged-parent handling, family clustering, and official-vs-variant boundaries.
