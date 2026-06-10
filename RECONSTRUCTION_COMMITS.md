@@ -74,3 +74,4 @@
 - 072 (2026-06-09 10:17:00) :: component=src/whichvlm/output/snippet.py; action=recorded import-time schema expectations;
 - 073 (2026-06-10 09:01:00) :: component=src/whichvlm/output/runner.py; action=documented memory estimation guardrails;
 - 074 (2026-06-10 09:09:00) :: component=src/whichvlm/config.py; action=noted regression risk around family demotion;
+- 075 (2026-06-10 09:14:00) :: component=src/whichvlm/utils.py; action=reviewed fallback source ordering;
