@@ -88,3 +88,4 @@
 - 086 (2026-06-11 09:09:00) :: component=pyproject.toml; action=tightened hardware capability fallback;
 - 087 (2026-06-11 09:14:00) :: component=NOTICE; action=tracked GGUF variant selection edge-case;
 - 088 (2026-06-11 09:22:00) :: component=LICENSE; action=captured inference path guardrail rationale;
+- 089 (2026-06-11 09:30:00) :: component=src/whichvlm/hardware/detector.py; action=aligned ranking confidence ordering;
