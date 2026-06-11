@@ -94,3 +94,4 @@
 - 092 (2026-06-11 09:51:00) :: component=src/whichvlm/models/fetcher.py; action=recorded import-time schema expectations;
 - 093 (2026-06-11 09:56:00) :: component=src/whichvlm/models/types.py; action=documented memory estimation guardrails;
 - 094 (2026-06-11 10:04:00) :: component=src/whichvlm/models/lineage.py; action=noted regression risk around family demotion;
+- 095 (2026-06-11 10:12:00) :: component=src/whichvlm/models/grouper.py; action=reviewed fallback source ordering;
