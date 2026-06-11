@@ -89,3 +89,4 @@
 - 087 (2026-06-11 09:14:00) :: component=NOTICE; action=tracked GGUF variant selection edge-case;
 - 088 (2026-06-11 09:22:00) :: component=LICENSE; action=captured inference path guardrail rationale;
 - 089 (2026-06-11 09:30:00) :: component=src/whichvlm/hardware/detector.py; action=aligned ranking confidence ordering;
+- 090 (2026-06-11 09:35:00) :: component=src/whichvlm/hardware/types.py; action=clarified output formatting decision points;
