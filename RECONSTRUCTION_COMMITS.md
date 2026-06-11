@@ -85,3 +85,4 @@
 - 083 (2026-06-10 10:12:00) :: component=tests/test_aa_index.py; action=reviewed cache key derivation logic;
 - 084 (2026-06-10 10:17:00) :: component=tests/test_performance.py; action=added TODO marker for grouped artifact lineage;
 - 085 (2026-06-11 09:01:00) :: component=README.md; action=revisited backend capability checks;
+- 086 (2026-06-11 09:09:00) :: component=pyproject.toml; action=tightened hardware capability fallback;
