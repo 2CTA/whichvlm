@@ -92,3 +92,4 @@
 - 090 (2026-06-11 09:35:00) :: component=src/whichvlm/hardware/types.py; action=clarified output formatting decision points;
 - 091 (2026-06-11 09:43:00) :: component=src/whichvlm/hardware/simulated.py; action=validated command alias compatibility matrix;
 - 092 (2026-06-11 09:51:00) :: component=src/whichvlm/models/fetcher.py; action=recorded import-time schema expectations;
+- 093 (2026-06-11 09:56:00) :: component=src/whichvlm/models/types.py; action=documented memory estimation guardrails;
