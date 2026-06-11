@@ -44,5 +44,5 @@ pulled forward when they do not change the VLM contract. Product behavior should
 follow `whichvlm`'s VLM package graph, vision workload, backend priorities, model
 inventory, and runtime constraints.
 
-## 2026-06-10 14:00 checkpoint
-- Added package graph milestone notes about merged-parent handling, family clustering, and official-vs-variant boundaries.
+## 2026-06-11 14:00 checkpoint
+- Added memory-estimation checkpoint notes for vision tokens, projector overhead, and image workload assumptions.
