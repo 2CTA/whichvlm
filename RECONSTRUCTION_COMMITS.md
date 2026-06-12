@@ -104,3 +104,4 @@
 - 102 (2026-06-12 09:35:00) :: component=src/whichvlm/models/benchmark_sources/chatbot_arena.py; action=noted quantization boundary handling;
 - 103 (2026-06-12 09:43:00) :: component=src/whichvlm/models/benchmark_sources/aider.py; action=reviewed cache key derivation logic;
 - 104 (2026-06-12 09:51:00) :: component=src/whichvlm/engine/ranker.py; action=added TODO marker for grouped artifact lineage;
+- 105 (2026-06-12 09:56:00) :: component=src/whichvlm/engine/compatibility.py; action=revisited backend capability checks;
