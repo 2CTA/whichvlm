@@ -102,3 +102,4 @@
 - 100 (2026-06-12 09:22:00) :: component=src/whichvlm/models/benchmark_sources/aa_index.py; action=noted portability concerns for json cache;
 - 101 (2026-06-12 09:30:00) :: component=src/whichvlm/models/benchmark_sources/livebench.py; action=documented benchmark evidence assumptions;
 - 102 (2026-06-12 09:35:00) :: component=src/whichvlm/models/benchmark_sources/chatbot_arena.py; action=noted quantization boundary handling;
+- 103 (2026-06-12 09:43:00) :: component=src/whichvlm/models/benchmark_sources/aider.py; action=reviewed cache key derivation logic;
