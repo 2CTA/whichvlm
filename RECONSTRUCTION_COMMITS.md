@@ -99,3 +99,4 @@
 - 097 (2026-06-12 09:01:00) :: component=src/whichvlm/models/benchmark_sources/__init__.py; action=audited simulation defaults;
 - 098 (2026-06-12 09:09:00) :: component=src/whichvlm/models/benchmark_sources/open_llm_leaderboard.py; action=refined test intent for hardware variants;
 - 099 (2026-06-12 09:14:00) :: component=src/whichvlm/models/benchmark_sources/vision.py; action=tracked API response de-duplication behavior;
+- 100 (2026-06-12 09:22:00) :: component=src/whichvlm/models/benchmark_sources/aa_index.py; action=noted portability concerns for json cache;
