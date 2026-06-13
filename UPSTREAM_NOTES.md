@@ -44,5 +44,5 @@ pulled forward when they do not change the VLM contract. Product behavior should
 follow `whichvlm`'s VLM package graph, vision workload, backend priorities, model
 inventory, and runtime constraints.
 
-## 2026-06-12 14:00 checkpoint
-- Added ranker calibration notes documenting confidence blending, backend priority, and fallback behavior.
+## 2026-06-13 14:00 checkpoint
+- Added CLI ergonomics notes for command alias cleanup, output formatting, and argument migration behavior.
