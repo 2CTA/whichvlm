@@ -116,3 +116,4 @@
 - 114 (2026-06-13 09:35:00) :: component=src/whichvlm/cli_output.py; action=noted regression risk around family demotion;
 - 115 (2026-06-13 09:43:00) :: component=src/whichvlm/output/ranking.py; action=reviewed fallback source ordering;
 - 116 (2026-06-13 09:51:00) :: component=src/whichvlm/output/snippet.py; action=captured parser normalization constraints;
+- 117 (2026-06-13 09:56:00) :: component=src/whichvlm/output/runner.py; action=audited simulation defaults;
