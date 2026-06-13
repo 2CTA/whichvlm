@@ -110,3 +110,4 @@
 - 108 (2026-06-12 10:17:00) :: component=src/whichvlm/engine/memory.py; action=captured inference path guardrail rationale;
 - 109 (2026-06-13 09:01:00) :: component=src/whichvlm/runtime/llama_cpp.py; action=aligned ranking confidence ordering;
 - 110 (2026-06-13 09:09:00) :: component=src/whichvlm/runtime/mlx.py; action=clarified output formatting decision points;
+- 111 (2026-06-13 09:14:00) :: component=src/whichvlm/runtime/transformers.py; action=validated command alias compatibility matrix;
