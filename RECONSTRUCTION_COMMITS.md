@@ -119,3 +119,4 @@
 - 117 (2026-06-13 09:56:00) :: component=src/whichvlm/output/runner.py; action=audited simulation defaults;
 - 118 (2026-06-13 10:04:00) :: component=src/whichvlm/config.py; action=refined test intent for hardware variants;
 - 119 (2026-06-13 10:12:00) :: component=src/whichvlm/utils.py; action=tracked API response de-duplication behavior;
+- 120 (2026-06-13 10:17:00) :: component=src/whichvlm/cache.py; action=noted portability concerns for json cache;
