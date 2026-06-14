@@ -44,5 +44,5 @@ pulled forward when they do not change the VLM contract. Product behavior should
 follow `whichvlm`'s VLM package graph, vision workload, backend priorities, model
 inventory, and runtime constraints.
 
-## 2026-06-13 14:00 checkpoint
-- Added CLI ergonomics notes for command alias cleanup, output formatting, and argument migration behavior.
+## 2026-06-14 14:00 checkpoint
+- Added runtime planning notes tracking run/snippet paths and artifact-selection outcomes.
