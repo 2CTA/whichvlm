@@ -129,3 +129,4 @@
 - 127 (2026-06-14 09:43:00) :: component=tests/test_aa_index.py; action=tracked GGUF variant selection edge-case;
 - 128 (2026-06-14 09:51:00) :: component=tests/test_performance.py; action=captured inference path guardrail rationale;
 - 129 (2026-06-14 09:56:00) :: component=README.md; action=aligned ranking confidence ordering;
+- 130 (2026-06-14 10:04:00) :: component=pyproject.toml; action=clarified output formatting decision points;
