@@ -125,3 +125,4 @@
 - 123 (2026-06-14 09:14:00) :: component=tests/test_ranking_edge_cases.py; action=reviewed cache key derivation logic;
 - 124 (2026-06-14 09:22:00) :: component=tests/test_fetcher.py; action=added TODO marker for grouped artifact lineage;
 - 125 (2026-06-14 09:30:00) :: component=tests/test_grouper.py; action=revisited backend capability checks;
+- 126 (2026-06-14 09:35:00) :: component=tests/test_http.py; action=tightened hardware capability fallback;
