@@ -44,5 +44,5 @@ pulled forward when they do not change the VLM contract. Product behavior should
 follow `whichvlm`'s VLM package graph, vision workload, backend priorities, model
 inventory, and runtime constraints.
 
-## 2026-06-14 14:00 checkpoint
-- Added runtime planning notes tracking run/snippet paths and artifact-selection outcomes.
+## 2026-06-15 14:00 checkpoint
+- Added CLI UX checkpoint notes describing visual style, progress bars, and output readability improvements.
