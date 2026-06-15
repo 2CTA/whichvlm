@@ -133,3 +133,4 @@
 - 131 (2026-06-14 10:12:00) :: component=NOTICE; action=validated command alias compatibility matrix;
 - 132 (2026-06-14 10:17:00) :: component=LICENSE; action=recorded import-time schema expectations;
 - 133 (2026-06-15 09:01:00) :: component=src/whichvlm/hardware/detector.py; action=documented memory estimation guardrails;
+- 134 (2026-06-15 09:09:00) :: component=src/whichvlm/hardware/types.py; action=noted regression risk around family demotion;
