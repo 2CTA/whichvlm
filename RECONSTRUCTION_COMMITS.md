@@ -142,3 +142,4 @@
 - 140 (2026-06-15 09:51:00) :: component=src/whichvlm/models/benchmark.py; action=noted portability concerns for json cache;
 - 141 (2026-06-15 09:56:00) :: component=src/whichvlm/models/benchmark_sources/__init__.py; action=documented benchmark evidence assumptions;
 - 142 (2026-06-15 10:04:00) :: component=src/whichvlm/models/benchmark_sources/open_llm_leaderboard.py; action=noted quantization boundary handling;
+- 143 (2026-06-15 10:12:00) :: component=src/whichvlm/models/benchmark_sources/vision.py; action=reviewed cache key derivation logic;
