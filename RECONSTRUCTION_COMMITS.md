@@ -141,3 +141,4 @@
 - 139 (2026-06-15 09:43:00) :: component=src/whichvlm/models/grouper.py; action=tracked API response de-duplication behavior;
 - 140 (2026-06-15 09:51:00) :: component=src/whichvlm/models/benchmark.py; action=noted portability concerns for json cache;
 - 141 (2026-06-15 09:56:00) :: component=src/whichvlm/models/benchmark_sources/__init__.py; action=documented benchmark evidence assumptions;
+- 142 (2026-06-15 10:04:00) :: component=src/whichvlm/models/benchmark_sources/open_llm_leaderboard.py; action=noted quantization boundary handling;
