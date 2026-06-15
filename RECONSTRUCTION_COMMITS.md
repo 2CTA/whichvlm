@@ -136,3 +136,4 @@
 - 134 (2026-06-15 09:09:00) :: component=src/whichvlm/hardware/types.py; action=noted regression risk around family demotion;
 - 135 (2026-06-15 09:14:00) :: component=src/whichvlm/hardware/simulated.py; action=reviewed fallback source ordering;
 - 136 (2026-06-15 09:22:00) :: component=src/whichvlm/models/fetcher.py; action=captured parser normalization constraints;
+- 137 (2026-06-15 09:30:00) :: component=src/whichvlm/models/types.py; action=audited simulation defaults;
