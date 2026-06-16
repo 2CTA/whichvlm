@@ -44,5 +44,5 @@ pulled forward when they do not change the VLM contract. Product behavior should
 follow `whichvlm`'s VLM package graph, vision workload, backend priorities, model
 inventory, and runtime constraints.
 
-## 2026-06-15 14:00 checkpoint
-- Added CLI UX checkpoint notes describing visual style, progress bars, and output readability improvements.
+## 2026-06-16 14:00 checkpoint
+- Added runtime-path checkpoint notes for llama.cpp and MLX codegen coverage and guardrail evolution.
