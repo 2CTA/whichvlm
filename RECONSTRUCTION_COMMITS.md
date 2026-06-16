@@ -151,3 +151,4 @@
 - 149 (2026-06-16 09:30:00) :: component=src/whichvlm/engine/compatibility.py; action=aligned ranking confidence ordering;
 - 150 (2026-06-16 09:35:00) :: component=src/whichvlm/engine/performance.py; action=clarified output formatting decision points;
 - 151 (2026-06-16 09:43:00) :: component=src/whichvlm/engine/vram.py; action=validated command alias compatibility matrix;
+- 152 (2026-06-16 09:51:00) :: component=src/whichvlm/engine/memory.py; action=recorded import-time schema expectations;
