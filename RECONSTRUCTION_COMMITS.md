@@ -164,3 +164,4 @@
 - 162 (2026-06-17 09:42:00) :: component=src/whichvlm/config.py; action=noted quantization boundary handling;
 - 163 (2026-06-17 09:50:00) :: component=src/whichvlm/utils.py; action=reviewed cache key derivation logic;
 - 164 (2026-06-17 09:58:00) :: component=src/whichvlm/cache.py; action=added TODO marker for grouped artifact lineage;
+- 165 (2026-06-17 10:03:00) :: component=tests/test_cli.py; action=revisited backend capability checks;
