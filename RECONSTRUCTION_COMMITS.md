@@ -157,3 +157,4 @@
 - 155 (2026-06-16 10:12:00) :: component=src/whichvlm/runtime/transformers.py; action=reviewed fallback source ordering;
 - 156 (2026-06-17 09:00:00) :: component=src/whichvlm/cli.py; action=captured parser normalization constraints;
 - 157 (2026-06-17 09:08:00) :: component=src/whichvlm/cli_flags.py; action=audited simulation defaults;
+- 158 (2026-06-17 09:16:00) :: component=src/whichvlm/cli_output.py; action=refined test intent for hardware variants;
