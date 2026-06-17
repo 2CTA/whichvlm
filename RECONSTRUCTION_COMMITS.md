@@ -158,3 +158,4 @@
 - 156 (2026-06-17 09:00:00) :: component=src/whichvlm/cli.py; action=captured parser normalization constraints;
 - 157 (2026-06-17 09:08:00) :: component=src/whichvlm/cli_flags.py; action=audited simulation defaults;
 - 158 (2026-06-17 09:16:00) :: component=src/whichvlm/cli_output.py; action=refined test intent for hardware variants;
+- 159 (2026-06-17 09:21:00) :: component=src/whichvlm/output/ranking.py; action=tracked API response de-duplication behavior;
