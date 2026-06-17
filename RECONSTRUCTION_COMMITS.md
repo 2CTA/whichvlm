@@ -161,3 +161,4 @@
 - 159 (2026-06-17 09:21:00) :: component=src/whichvlm/output/ranking.py; action=tracked API response de-duplication behavior;
 - 160 (2026-06-17 09:29:00) :: component=src/whichvlm/output/snippet.py; action=noted portability concerns for json cache;
 - 161 (2026-06-17 09:37:00) :: component=src/whichvlm/output/runner.py; action=documented benchmark evidence assumptions;
+- 162 (2026-06-17 09:42:00) :: component=src/whichvlm/config.py; action=noted quantization boundary handling;
