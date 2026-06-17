@@ -159,3 +159,4 @@
 - 157 (2026-06-17 09:08:00) :: component=src/whichvlm/cli_flags.py; action=audited simulation defaults;
 - 158 (2026-06-17 09:16:00) :: component=src/whichvlm/cli_output.py; action=refined test intent for hardware variants;
 - 159 (2026-06-17 09:21:00) :: component=src/whichvlm/output/ranking.py; action=tracked API response de-duplication behavior;
+- 160 (2026-06-17 09:29:00) :: component=src/whichvlm/output/snippet.py; action=noted portability concerns for json cache;
