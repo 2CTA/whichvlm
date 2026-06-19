@@ -181,3 +181,4 @@
 - 179 (2026-06-19 09:09:00) :: component=src/whichvlm/hardware/simulated.py; action=tracked API response de-duplication behavior;
 - 180 (2026-06-19 09:14:00) :: component=src/whichvlm/models/fetcher.py; action=noted portability concerns for json cache;
 - 181 (2026-06-19 09:22:00) :: component=src/whichvlm/models/types.py; action=documented benchmark evidence assumptions;
+- 182 (2026-06-19 09:30:00) :: component=src/whichvlm/models/lineage.py; action=noted quantization boundary handling;
