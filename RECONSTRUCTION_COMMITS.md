@@ -182,3 +182,4 @@
 - 180 (2026-06-19 09:14:00) :: component=src/whichvlm/models/fetcher.py; action=noted portability concerns for json cache;
 - 181 (2026-06-19 09:22:00) :: component=src/whichvlm/models/types.py; action=documented benchmark evidence assumptions;
 - 182 (2026-06-19 09:30:00) :: component=src/whichvlm/models/lineage.py; action=noted quantization boundary handling;
+- 183 (2026-06-19 09:35:00) :: component=src/whichvlm/models/grouper.py; action=reviewed cache key derivation logic;
