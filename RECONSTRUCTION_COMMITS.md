@@ -189,3 +189,4 @@
 - 187 (2026-06-19 10:04:00) :: component=src/whichvlm/models/benchmark_sources/vision.py; action=tracked GGUF variant selection edge-case;
 - 188 (2026-06-19 10:12:00) :: component=src/whichvlm/models/benchmark_sources/aa_index.py; action=captured inference path guardrail rationale;
 - 189 (2026-06-20 09:00:00) :: component=src/whichvlm/models/benchmark_sources/livebench.py; action=aligned ranking confidence ordering;
+- 190 (2026-06-20 09:08:00) :: component=src/whichvlm/models/benchmark_sources/chatbot_arena.py; action=clarified output formatting decision points;
