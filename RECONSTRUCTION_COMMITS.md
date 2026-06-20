@@ -195,3 +195,4 @@
 - 193 (2026-06-20 09:29:00) :: component=src/whichvlm/engine/compatibility.py; action=documented memory estimation guardrails;
 - 194 (2026-06-20 09:37:00) :: component=src/whichvlm/engine/performance.py; action=noted regression risk around family demotion;
 - 195 (2026-06-20 09:42:00) :: component=src/whichvlm/engine/vram.py; action=reviewed fallback source ordering;
+- 196 (2026-06-20 09:50:00) :: component=src/whichvlm/engine/memory.py; action=captured parser normalization constraints;
