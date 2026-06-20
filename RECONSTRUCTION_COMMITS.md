@@ -188,3 +188,4 @@
 - 186 (2026-06-19 09:56:00) :: component=src/whichvlm/models/benchmark_sources/open_llm_leaderboard.py; action=tightened hardware capability fallback;
 - 187 (2026-06-19 10:04:00) :: component=src/whichvlm/models/benchmark_sources/vision.py; action=tracked GGUF variant selection edge-case;
 - 188 (2026-06-19 10:12:00) :: component=src/whichvlm/models/benchmark_sources/aa_index.py; action=captured inference path guardrail rationale;
+- 189 (2026-06-20 09:00:00) :: component=src/whichvlm/models/benchmark_sources/livebench.py; action=aligned ranking confidence ordering;
