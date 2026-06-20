@@ -191,3 +191,4 @@
 - 189 (2026-06-20 09:00:00) :: component=src/whichvlm/models/benchmark_sources/livebench.py; action=aligned ranking confidence ordering;
 - 190 (2026-06-20 09:08:00) :: component=src/whichvlm/models/benchmark_sources/chatbot_arena.py; action=clarified output formatting decision points;
 - 191 (2026-06-20 09:16:00) :: component=src/whichvlm/models/benchmark_sources/aider.py; action=validated command alias compatibility matrix;
+- 192 (2026-06-20 09:21:00) :: component=src/whichvlm/engine/ranker.py; action=recorded import-time schema expectations;
