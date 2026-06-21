@@ -51,7 +51,7 @@ def test_nvidia_smi_fallback_applies_rtx_a3000_laptop_catalog(monkeypatch):
 
 
 def test_nvidia_smi_fallback_resolves_laptop_5090_via_dbgpu(monkeypatch):
-    # Regression for #74: a laptop RTX 5090 must not inherit the desktop
+    # A laptop RTX 5090 must not inherit the desktop
     # 1792 GB/s bandwidth. dbgpu carries "GeForce RTX 5090 Mobile" (~896).
     real_import = builtins.__import__
 

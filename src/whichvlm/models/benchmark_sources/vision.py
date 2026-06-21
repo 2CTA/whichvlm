@@ -18,11 +18,7 @@ only models tagged ``vision`` consume them.
 
 from __future__ import annotations
 
-import logging
-
 import httpx
-
-logger = logging.getLogger(__name__)
 
 # Curated multimodal capability index (0-100), 2026-05 snapshot.
 # Anchored so the current Qwen3-VL / InternVL3 frontier sits in the

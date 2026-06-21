@@ -4,12 +4,12 @@ import pytest
 
 from whichvlm.hardware.memory import estimate_usable_ram
 
-_GiB = 1024**3
+BYTES_PER_GIB = 1024**3
 
 
 def _expected_usable(total: int) -> int:
     reserve = int(total * 0.15)
-    reserve = max(4 * _GiB, min(reserve, 32 * _GiB))
+    reserve = max(4 * BYTES_PER_GIB, min(reserve, 32 * BYTES_PER_GIB))
     return total - reserve
 
 
@@ -19,22 +19,22 @@ def _expected_usable(total: int) -> int:
     ids=["16GB", "32GB", "64GB", "128GB", "1TB"],
 )
 def test_estimate_usable_ram(total_gb):
-    total = total_gb * _GiB
+    total = total_gb * BYTES_PER_GIB
     assert estimate_usable_ram(total) == _expected_usable(total)
 
 
 def test_16gb_hits_min_reserve():
-    total = 16 * _GiB
-    assert estimate_usable_ram(total) == total - 4 * _GiB
+    total = 16 * BYTES_PER_GIB
+    assert estimate_usable_ram(total) == total - 4 * BYTES_PER_GIB
 
 
 def test_1tb_hits_max_reserve():
-    total = 1024 * _GiB
-    assert estimate_usable_ram(total) == total - 32 * _GiB
+    total = 1024 * BYTES_PER_GIB
+    assert estimate_usable_ram(total) == total - 32 * BYTES_PER_GIB
 
 
 def test_midrange_uses_percentage():
-    total = 64 * _GiB
+    total = 64 * BYTES_PER_GIB
     expected_reserve = int(total * 0.15)
-    assert 4 * _GiB < expected_reserve < 32 * _GiB
+    assert 4 * BYTES_PER_GIB < expected_reserve < 32 * BYTES_PER_GIB
     assert estimate_usable_ram(total) == total - expected_reserve

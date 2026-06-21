@@ -6,8 +6,8 @@ import logging
 import re
 import subprocess
 
-from whichvlm.constants import NVIDIA_COMPUTE_CAPABILITY, _GiB
-from whichvlm.hardware.gpu_db import _static_bandwidth, resolve_detected_bandwidth
+from whichvlm.constants import NVIDIA_COMPUTE_CAPABILITY, BYTES_PER_GIB
+from whichvlm.hardware.gpu_db import static_bandwidth, resolve_detected_bandwidth
 from whichvlm.hardware.types import GPUInfo
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ def _lookup_compute_capability(name: str) -> tuple[int, int] | None:
 def _lookup_bandwidth(name: str) -> float | None:
     """Curated GPU_BANDWIDTH lookup. Kept for regression tests; live detection
     goes through ``resolve_detected_bandwidth``, which also consults dbgpu."""
-    return _static_bandwidth(name)
+    return static_bandwidth(name)
 
 
 def _is_unified_memory_nvidia_gpu(name: str) -> bool:
@@ -40,7 +40,7 @@ def _system_memory_bytes() -> int:
     ram_bytes = detect_ram_bytes()
     if ram_bytes > 0:
         return ram_bytes
-    return 128 * _GiB
+    return 128 * BYTES_PER_GIB
 
 
 def _make_nvidia_gpu(
@@ -89,11 +89,11 @@ def _detect_nvidia_gpus_via_smi() -> list[GPUInfo]:
     """
     try:
         stdout = _run_smi_query("name,memory.total,clocks.max.memory")
-    except (FileNotFoundError, subprocess.SubprocessError, OSError) as e:
+    except (subprocess.SubprocessError, OSError) as e:
         logger.debug(f"nvidia-smi 3-field query failed ({e}); retrying without clock")
         try:
             stdout = _run_smi_query("name,memory.total")
-        except (FileNotFoundError, subprocess.SubprocessError, OSError) as e2:
+        except (subprocess.SubprocessError, OSError) as e2:
             logger.debug(f"nvidia-smi fallback failed: {e2}")
             return []
 
@@ -149,7 +149,7 @@ def detect_nvidia_gpus() -> list[GPUInfo]:
             pynvml.nvmlSystemGetDriverVersion()  # ensure driver is accessible
             cuda_version = pynvml.nvmlSystemGetCudaDriverVersion_v2()
             cuda_str = f"{cuda_version // 1000}.{(cuda_version % 1000) // 10}"
-        except Exception:
+        except pynvml.NVMLError:
             cuda_str = None
 
         for i in range(count):
@@ -173,7 +173,7 @@ def detect_nvidia_gpus() -> list[GPUInfo]:
                 mem_clock_mhz: float | None = float(
                     pynvml.nvmlDeviceGetMaxClockInfo(handle, pynvml.NVML_CLOCK_MEM)
                 )
-            except Exception as clock_err:
+            except (pynvml.NVMLError, AttributeError) as clock_err:
                 # Optional: without it, same-name memory variants fall back to the
                 # curated default. Log so an unexpected under-serve is diagnosable.
                 logger.debug(
@@ -188,7 +188,7 @@ def detect_nvidia_gpus() -> list[GPUInfo]:
     finally:
         try:
             pynvml.nvmlShutdown()
-        except Exception:
+        except pynvml.NVMLError:
             pass
 
     if gpus:

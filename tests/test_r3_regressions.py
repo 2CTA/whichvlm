@@ -1,18 +1,15 @@
-"""Regression tests for the Round 3 fixes (whichvlm 0.5.1).
+"""Regression tests for ranking and hardware edge cases.
 
-Each test reproduces a specific bug class that the 0.5.1-dev ranker
-exhibited and that was found by stress-testing previously unexercised
-axes (Apple --gpu, family inheritance order, grouper base selection,
-reasoning-model surfacing):
+These tests cover stress cases across Apple GPU simulation, family inheritance
+order, grouper base selection, and reasoning-model surfacing:
 
-- R3-1: ``--gpu "M1"`` fuzzy-matched the 1997 ATI Rage Mobility-M1
+- ``--gpu "M1"`` must not fuzzy-match the 1997 ATI Rage Mobility-M1
   (vendor=amd); ``--gpu "M3 Max"`` fell through to vendor=nvidia.
-- R3-2: a 6.6B "imatrix-aligned" / MTP-head fork inherited its 158B
+- A 6.6B "imatrix-aligned" / MTP-head fork must not inherit its 158B
   base's benchmark via family/base_model lookup.
-- R3-3: a high-download downstream fork overrode the official upstream
-  model as the family base, corrupting ``family_id``.
-- R3-4/R3-5: reasoning lines (QwQ-32B, DeepSeek-R1-Distill) had no
-  curated benchmark entry and never surfaced in the ranking.
+- A high-download fork must not become the family base when it references a
+  smaller-download base checkpoint.
+- Reasoning lines need curated benchmark entries so they can surface.
 """
 
 from __future__ import annotations
@@ -140,9 +137,7 @@ class TestFamilySizeInheritance:
         assert _params_compatible(6.6, "deepseek-ai/DeepSeek-V4-Flash") is True
 
     def test_ranker_drops_tiny_fork_inheriting_huge_base(self):
-        """The real bug: jedisct1/DeepSeek-V4-Flash-imatrix-aligned
-        (6.6B) shared family_id with the 158B base and inherited its
-        leaderboard score, landing in the CPU-only top 5."""
+        """A tiny fork must not inherit a much larger base score."""
         base = ModelInfo(
             id="org/DeepSeek-Vx-Flash",
             family_id="deepseek-vx-flash",
@@ -172,11 +167,6 @@ class TestFamilySizeInheritance:
             benchmark_scores=scores,
             require_direct_top=False,
         )
-        # With the guard the fork's family/base inheritance is rejected
-        # entirely (status=none, score≈20). Without it the fork inherits
-        # the 158B base at confidence 0.6 (status=estimated, score≈59).
-        # The thresholds below sit firmly between those two regimes so
-        # the test goes red the instant the guard is removed.
         tiny_res = next((r for r in ranked if r.model.id == tiny_fork.id), None)
         assert tiny_res is not None, "tiny fork should still be listed"
         assert tiny_res.benchmark_status == "none", (
@@ -190,14 +180,11 @@ class TestFamilySizeInheritance:
         )
 
 
-# ------------------------------------------------------------------ R3-3
-
-
-class TestGrouperUpstreamBase:
+class TestGrouperReferencedBase:
     """Family base selection must follow the base_model graph, not raw
     download counts."""
 
-    def test_official_upstream_wins_over_more_downloaded_fork(self):
+    def test_referenced_base_wins_over_more_downloaded_fork(self):
         official = ModelInfo(
             id="Qwen/Qwen3-4B-Thinking-2507",
             family_id="",
@@ -207,15 +194,15 @@ class TestGrouperUpstreamBase:
             base_model=None,
         )
         popular_fork = ModelInfo(
-            id="prefeitura-rio/Rio-3.0-Open-Mini",
+            id="fixture-org/Popular-4B-Fork",
             family_id="",
-            name="Rio-3.0-Open-Mini",
+            name="Popular-4B-Fork",
             parameter_count=4_000_000_000,
             downloads=1_300_000,  # more than the official base
             base_model="Qwen/Qwen3-4B-Thinking-2507",
         )
         gguf_fork = ModelInfo(
-            id="MaziyarPanahi/Qwen3-4B-Thinking-2507-GGUF",
+            id="community-quants/Qwen3-4B-Thinking-2507-GGUF",
             family_id="",
             name="Qwen3-4B-Thinking-2507-GGUF",
             parameter_count=4_000_000_000,
@@ -229,9 +216,9 @@ class TestGrouperUpstreamBase:
         fam = families[0]
         assert fam.base_model.id == "Qwen/Qwen3-4B-Thinking-2507", (
             f"family base is {fam.base_model.id!r}; the popular fork "
-            "overrode the official upstream (regression R3-3)"
+            "overrode the referenced base"
         )
-        # Every member must carry the upstream-derived family_id.
+        # Every member must carry the base-derived family_id.
         all_ids = {fam.base_model.id} | {v.id for v in fam.variants}
         assert "Qwen/Qwen3-4B-Thinking-2507" in all_ids
         for m in [official, popular_fork, gguf_fork]:

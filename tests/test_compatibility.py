@@ -1,6 +1,6 @@
 """Tests for compatibility checking."""
 
-from whichvlm.constants import _GiB
+from whichvlm.constants import BYTES_PER_GIB
 from whichvlm.engine.compatibility import check_compatibility
 from whichvlm.hardware.memory import estimate_usable_ram
 from whichvlm.hardware.types import GPUInfo, HardwareInfo
@@ -73,21 +73,21 @@ def test_partial_offload():
 def test_usable_vram_budget_can_turn_full_gpu_into_partial_offload():
     model = _make_model()
     variant = _make_variant(7_000_000_000)
-    hw = _make_hardware(vram=8 * _GiB, ram=64 * _GiB)
-    hw.gpus[0].usable_vram_bytes = 6 * _GiB
+    hw = _make_hardware(vram=8 * BYTES_PER_GIB, ram=64 * BYTES_PER_GIB)
+    hw.gpus[0].usable_vram_bytes = 6 * BYTES_PER_GIB
 
     result = check_compatibility(model, variant, hw)
 
     assert result.can_run is True
     assert result.fit_type == "partial_offload"
-    assert result.vram_available_bytes == 6 * _GiB
+    assert result.vram_available_bytes == 6 * BYTES_PER_GIB
 
 
 def test_ram_budget_limits_partial_offload_pool():
     model = _make_model()
     variant = _make_variant(20_000_000_000)
-    hw = _make_hardware(vram=8 * _GiB, ram=64 * _GiB)
-    hw.ram_budget_bytes = 4 * _GiB
+    hw = _make_hardware(vram=8 * BYTES_PER_GIB, ram=64 * BYTES_PER_GIB)
+    hw.ram_budget_bytes = 4 * BYTES_PER_GIB
 
     result = check_compatibility(model, variant, hw)
 
@@ -103,24 +103,24 @@ def test_ram_budget_caps_shared_memory_gpu_fit_pool():
             GPUInfo(
                 name="Apple M2",
                 vendor="apple",
-                vram_bytes=16 * _GiB,
-                usable_vram_bytes=15 * _GiB,
+                vram_bytes=16 * BYTES_PER_GIB,
+                usable_vram_bytes=15 * BYTES_PER_GIB,
                 memory_bandwidth_gbps=100.0,
                 shared_memory=True,
             )
         ],
         cpu_name="Apple M2",
         cpu_cores=8,
-        ram_bytes=16 * _GiB,
-        ram_budget_bytes=8 * _GiB,
-        disk_free_bytes=100 * _GiB,
+        ram_bytes=16 * BYTES_PER_GIB,
+        ram_budget_bytes=8 * BYTES_PER_GIB,
+        disk_free_bytes=100 * BYTES_PER_GIB,
         os="darwin",
     )
 
     result = check_compatibility(model, variant, hw)
 
     assert result.can_run is False
-    assert result.vram_available_bytes == 8 * _GiB
+    assert result.vram_available_bytes == 8 * BYTES_PER_GIB
 
 
 def test_shared_memory_amd_apu_uses_system_memory_pool():
@@ -216,28 +216,28 @@ def test_shared_memory_igpu_is_not_summed_with_dedicated_gpu():
 
 def test_homogeneous_multi_gpu_uses_conservative_fit_budget():
     model = _make_model(1_000_000_000)
-    variant = _make_variant(int(46 * _GiB))
+    variant = _make_variant(int(46 * BYTES_PER_GIB))
     hw = HardwareInfo(
         gpus=[
             GPUInfo(
                 name="NVIDIA GeForce RTX 4090",
                 vendor="nvidia",
-                vram_bytes=24 * _GiB,
+                vram_bytes=24 * BYTES_PER_GIB,
                 compute_capability=(8, 9),
                 memory_bandwidth_gbps=1008.0,
             ),
             GPUInfo(
                 name="NVIDIA GeForce RTX 4090",
                 vendor="nvidia",
-                vram_bytes=24 * _GiB,
+                vram_bytes=24 * BYTES_PER_GIB,
                 compute_capability=(8, 9),
                 memory_bandwidth_gbps=1008.0,
             ),
         ],
         cpu_name="Test CPU",
         cpu_cores=16,
-        ram_bytes=128 * _GiB,
-        disk_free_bytes=200 * _GiB,
+        ram_bytes=128 * BYTES_PER_GIB,
+        disk_free_bytes=200 * BYTES_PER_GIB,
         os="linux",
     )
 
@@ -246,7 +246,7 @@ def test_homogeneous_multi_gpu_uses_conservative_fit_budget():
     assert result.can_run is True
     assert result.fit_type == "partial_offload"
     assert result.uses_multi_gpu is True
-    assert result.vram_available_bytes == 48 * _GiB
+    assert result.vram_available_bytes == 48 * BYTES_PER_GIB
     assert result.multi_gpu_effective_vram_bytes is not None
     assert result.multi_gpu_effective_vram_bytes < result.vram_available_bytes
     assert any("conservative layer-split budget" in w for w in result.warnings)
@@ -254,28 +254,28 @@ def test_homogeneous_multi_gpu_uses_conservative_fit_budget():
 
 def test_heterogeneous_multi_gpu_warns_about_split_assumptions():
     model = _make_model()
-    variant = _make_variant(20 * _GiB)
+    variant = _make_variant(20 * BYTES_PER_GIB)
     hw = HardwareInfo(
         gpus=[
             GPUInfo(
                 name="NVIDIA GeForce RTX 4090",
                 vendor="nvidia",
-                vram_bytes=24 * _GiB,
+                vram_bytes=24 * BYTES_PER_GIB,
                 compute_capability=(8, 9),
                 memory_bandwidth_gbps=1008.0,
             ),
             GPUInfo(
                 name="NVIDIA GeForce RTX 3060",
                 vendor="nvidia",
-                vram_bytes=12 * _GiB,
+                vram_bytes=12 * BYTES_PER_GIB,
                 compute_capability=(8, 6),
                 memory_bandwidth_gbps=360.0,
             ),
         ],
         cpu_name="Test CPU",
         cpu_cores=16,
-        ram_bytes=64 * _GiB,
-        disk_free_bytes=200 * _GiB,
+        ram_bytes=64 * BYTES_PER_GIB,
+        disk_free_bytes=200 * BYTES_PER_GIB,
         os="linux",
     )
 
@@ -284,13 +284,13 @@ def test_heterogeneous_multi_gpu_warns_about_split_assumptions():
     assert result.can_run is True
     assert result.uses_multi_gpu is True
     assert result.multi_gpu_effective_vram_bytes is not None
-    assert result.multi_gpu_effective_vram_bytes < 36 * _GiB
+    assert result.multi_gpu_effective_vram_bytes < 36 * BYTES_PER_GIB
     assert any("Heterogeneous multi-GPU" in w for w in result.warnings)
 
 
 def test_multiple_shared_memory_gpus_are_not_summed():
     model = _make_model(120_000_000_000)
-    variant = _make_variant(70 * _GiB)
+    variant = _make_variant(70 * BYTES_PER_GIB)
     hw = HardwareInfo(
         gpus=[
             GPUInfo(
@@ -309,8 +309,8 @@ def test_multiple_shared_memory_gpus_are_not_summed():
         ],
         cpu_name="Test CPU",
         cpu_cores=16,
-        ram_bytes=64 * _GiB,
-        disk_free_bytes=200 * _GiB,
+        ram_bytes=64 * BYTES_PER_GIB,
+        disk_free_bytes=200 * BYTES_PER_GIB,
         os="linux",
     )
 

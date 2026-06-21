@@ -8,7 +8,7 @@ from pathlib import Path
 import click
 
 
-def _current_version() -> str:
+def current_version() -> str:
     try:
         return version("whichvlm")
     except PackageNotFoundError:
@@ -67,7 +67,7 @@ class ContextLengthType(click.ParamType):
 CONTEXT_LENGTH = ContextLengthType()
 
 
-def _cache_dir() -> Path:
+def cache_dir() -> Path:
     """Return the whichvlm cache directory, respecting XDG_CACHE_HOME."""
     base = os.environ.get("XDG_CACHE_HOME")
     if base and Path(base).is_absolute():

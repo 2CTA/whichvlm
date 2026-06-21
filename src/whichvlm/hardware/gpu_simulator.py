@@ -6,7 +6,6 @@ lookup of VRAM, memory bandwidth, and compute capability.
 
 from __future__ import annotations
 
-import logging
 import re
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
@@ -14,10 +13,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from dbgpu import GPUSpecification
 
-from whichvlm.constants import AMD_SHARED_MEMORY_APU_MARKERS, GPU_BANDWIDTH, _GiB
+from whichvlm.constants import AMD_SHARED_MEMORY_APU_MARKERS, GPU_BANDWIDTH, BYTES_PER_GIB
 from whichvlm.hardware.types import BackendCapability, GPUInfo
-
-logger = logging.getLogger(__name__)
 
 _MANUFACTURER_TO_VENDOR: dict[str, str] = {
     "NVIDIA": "nvidia",
@@ -267,7 +264,7 @@ def create_synthetic_gpu(name: str, vram_override_gb: float | None = None) -> GP
         return GPUInfo(
             name=f"{canonical} (simulated)",
             vendor=vendor,
-            vram_bytes=int(vram_gb * _GiB),
+            vram_bytes=int(vram_gb * BYTES_PER_GIB),
             memory_bandwidth_gbps=bandwidth,
             shared_memory=True,
             backend_capabilities=[
@@ -282,9 +279,9 @@ def create_synthetic_gpu(name: str, vram_override_gb: float | None = None) -> GP
 
     # VRAM
     if vram_override_gb is not None:
-        vram_bytes = int(vram_override_gb * _GiB)
+        vram_bytes = int(vram_override_gb * BYTES_PER_GIB)
     elif spec is not None and spec.memory_size_gb:
-        vram_bytes = int(spec.memory_size_gb * _GiB)
+        vram_bytes = int(spec.memory_size_gb * BYTES_PER_GIB)
     else:
         msg = f"Unknown GPU '{name}'."
         if _last_suggestions:

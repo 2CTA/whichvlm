@@ -7,10 +7,10 @@ from whichvlm.engine.types import CompatibilityResult
 from whichvlm.hardware.types import HardwareInfo
 from whichvlm.output import _console
 from whichvlm.output.formatting import (
-    _format_bytes,
-    _format_downloads,
-    _format_params,
-    _format_published_at,
+    format_bytes,
+    format_downloads,
+    format_params,
+    format_published_at,
 )
 
 
@@ -52,9 +52,9 @@ def _format_markdown_fit(fit_type: str) -> str:
 
 
 def _format_markdown_params(result: CompatibilityResult) -> str:
-    params = _format_params(result.model.parameter_count)
+    params = format_params(result.model.parameter_count)
     if result.model.is_moe and result.model.parameter_count_active:
-        params += f" ({_format_params(result.model.parameter_count_active)}a)"
+        params += f" ({format_params(result.model.parameter_count_active)}a)"
     return params
 
 
@@ -111,9 +111,9 @@ def display_markdown(
                 _format_markdown_params(result),
                 effective_quant_type(result.model, result.gguf_variant),
                 _format_markdown_fit(result.fit_type),
-                _format_bytes(result.vram_required_bytes),
+                format_bytes(result.vram_required_bytes),
                 _format_markdown_speed(result),
-                _format_published_at(result.model.published_at),
+                format_published_at(result.model.published_at),
                 _format_markdown_score(result),
                 result.model.license or "-",
             ]
@@ -136,8 +136,8 @@ def display_markdown(
                 result.model.id,
                 _format_markdown_params(result),
                 effective_quant_type(result.model, result.gguf_variant),
-                _format_published_at(result.model.published_at),
-                _format_downloads(result.model.downloads),
+                format_published_at(result.model.published_at),
+                format_downloads(result.model.downloads),
                 _format_markdown_score(result),
                 result.model.license or "-",
             ]

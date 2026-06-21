@@ -8,7 +8,7 @@ from math import log10
 from whichvlm.engine.types import CompatibilityResult
 
 
-def _format_bytes(num_bytes: int) -> str:
+def format_bytes(num_bytes: int) -> str:
     if num_bytes >= 1024**3:
         return f"{num_bytes / 1024**3:.1f} GB"
     if num_bytes >= 1024**2:
@@ -16,7 +16,7 @@ def _format_bytes(num_bytes: int) -> str:
     return f"{num_bytes / 1024:.0f} KB"
 
 
-def _format_params(count: int) -> str:
+def format_params(count: int) -> str:
     if count >= 1e9:
         return f"{count / 1e9:.1f}B"
     if count >= 1e6:
@@ -24,7 +24,7 @@ def _format_params(count: int) -> str:
     return str(count)
 
 
-def _format_downloads(downloads: int) -> str:
+def format_downloads(downloads: int) -> str:
     if downloads >= 1_000_000:
         return f"{downloads / 1_000_000:.1f}M"
     if downloads >= 1_000:
@@ -32,7 +32,7 @@ def _format_downloads(downloads: int) -> str:
     return str(downloads)
 
 
-def _format_published_at(value: str | None) -> str:
+def format_published_at(value: str | None) -> str:
     if not value:
         return "—"
     try:
@@ -42,7 +42,7 @@ def _format_published_at(value: str | None) -> str:
         return value[:10] if len(value) >= 10 else value
 
 
-def _format_speed(result: CompatibilityResult) -> str:
+def format_speed(result: CompatibilityResult) -> str:
     speed = result.estimated_tok_per_sec
     if speed is None:
         return "[grey50]N/A[/]"
@@ -64,7 +64,7 @@ def _format_speed(result: CompatibilityResult) -> str:
     return f"[{style}]{base}{marker}[/{style}]"
 
 
-def _parse_published_at(value: str | None) -> datetime | None:
+def parse_published_at(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
@@ -85,7 +85,7 @@ def _blend_hex(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> st
     return f"#{r:02x}{g:02x}{bch:02x}"
 
 
-def _downloads_style(downloads: int, min_log: float, max_log: float) -> str:
+def downloads_style(downloads: int, min_log: float, max_log: float) -> str:
     if downloads <= 0:
         return "grey50"
     dlog = log10(max(downloads, 1))
@@ -94,7 +94,7 @@ def _downloads_style(downloads: int, min_log: float, max_log: float) -> str:
     return _blend_hex((145, 80, 80), (55, 190, 120), t)
 
 
-def _published_style(
+def published_style(
     published: datetime | None,
     oldest_ts: float | None,
     newest_ts: float | None,

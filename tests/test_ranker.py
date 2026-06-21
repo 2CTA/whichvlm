@@ -393,7 +393,7 @@ def test_require_direct_top_prioritizes_direct_benchmark():
         top_n=10,
         benchmark_scores={
             "Qwen/direct-7b": 65.0,
-            # Qwen3のラインスコアだけ与えてestimatedを作る
+            # Only the Qwen3 line score is present, so Qwen/estimated-7b inherits it.
             "Qwen/Qwen3-32B": 80.0,
         },
         task_profile="any",
@@ -487,7 +487,7 @@ def test_general_profile_prefers_full_gpu_when_direct_is_partial():
 
 
 def test_family_dedup_prefers_direct_when_enabled():
-    # 同一family内でfit条件が同等なら、directを優先する
+    # Within one family and equivalent fit, direct evidence wins.
     direct_base = ModelInfo(
         id="Qwen/Qwen2.5-7B-Instruct",
         family_id="qwen2.5-7b",
@@ -728,7 +728,7 @@ def test_evidence_strict_filters_out_estimated_models():
         top_n=10,
         benchmark_scores={
             "Qwen/Qwen2.5-7B-Instruct": 70.0,
-            "Qwen/Qwen3-32B-Instruct": 85.0,  # Qwen3-14B には line 推定が入る
+            "Qwen/Qwen3-32B-Instruct": 85.0,  # Qwen3-14B inherits this line estimate.
         },
         task_profile="any",
         evidence_filter="strict",

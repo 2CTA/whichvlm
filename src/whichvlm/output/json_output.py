@@ -8,14 +8,13 @@ from whichvlm.engine.quantization import effective_quant_type, estimate_weight_b
 from whichvlm.engine.types import CompatibilityResult
 from whichvlm.hardware.types import BackendCapability, HardwareInfo
 from whichvlm.models.types import (
-    GGUFVariant,
     ModelArtifact,
     ModelComponent,
     ModelInfo,
     ModelLineage,
 )
 from whichvlm.output import _console
-from whichvlm.output.upgrade import _summarize_row
+from whichvlm.output.upgrade import summarize_upgrade_row
 
 
 def _backend_capability_dict(capability: BackendCapability) -> dict:
@@ -147,94 +146,16 @@ def display_plan_json(
     context_length: int,
     target_quant: str,
 ) -> None:
-    from whichvlm.constants import (
-        GPU_BANDWIDTH,
-        QUANT_BYTES_PER_WEIGHT,
-        QUANT_QUALITY_PENALTY,
-    )
-    from whichvlm.engine.performance import estimate_tok_per_sec
-    from whichvlm.engine.vram import estimate_vram
-    from whichvlm.hardware.types import GPUInfo
-
-    _GiB = 1024**3
-
-    quant_levels = ["Q2_K", "Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0", "F16"]
-    vram_by_quant = {}
-    for qt in quant_levels:
-        bpw = QUANT_BYTES_PER_WEIGHT.get(qt)
-        if bpw is None:
-            continue
-        fake_size = int(model.parameter_count * bpw)
-        fake_variant = GGUFVariant(
-            filename="", quant_type=qt, file_size_bytes=fake_size
-        )
-        vram_bytes = estimate_vram(model, fake_variant, context_length)
-        vram_by_quant[qt] = {
-            "vram_bytes": vram_bytes,
-            "quality_loss": QUANT_QUALITY_PENALTY.get(qt, 0.0),
-        }
-
-    target_vram = vram_by_quant.get(target_quant.upper(), {}).get("vram_bytes", 0)
-    if target_vram == 0:
-        bpw = QUANT_BYTES_PER_WEIGHT.get(target_quant.upper(), 0.5625)
-        fake_size = int(model.parameter_count * bpw)
-        fake_variant = GGUFVariant(
-            filename="", quant_type=target_quant, file_size_bytes=fake_size
-        )
-        target_vram = estimate_vram(model, fake_variant, context_length)
-
-    _PLAN_GPUS: list[tuple[str, int]] = [
-        ("RTX 4060", 8),
-        ("RTX 3060", 12),
-        ("RTX 4070", 12),
-        ("RTX 4080", 16),
-        ("RTX 4090", 24),
-        ("RX 7900 XTX", 24),
-        ("RTX 5090", 32),
-        ("A100 40GB", 40),
-        ("L40S", 48),
-        ("A100 80GB", 80),
-        ("H100", 80),
-        ("H200", 141),
-    ]
-
-    bpw = QUANT_BYTES_PER_WEIGHT.get(target_quant.upper(), 0.5625)
-    fake_size = int(model.parameter_count * bpw)
-    fake_variant = GGUFVariant(
-        filename="", quant_type=target_quant, file_size_bytes=fake_size
+    from whichvlm.output.plan import (
+        plan_gpu_compatibility,
+        plan_target_vram,
+        plan_vram_by_quant,
     )
 
-    gpus = []
-    for gpu_name, vram_gb in _PLAN_GPUS:
-        vram_bytes = int(vram_gb * _GiB)
-        bandwidth = GPU_BANDWIDTH.get(gpu_name)
-        gpu_info = GPUInfo(
-            name=gpu_name,
-            vendor="nvidia",
-            vram_bytes=vram_bytes,
-            memory_bandwidth_gbps=bandwidth,
-        )
-        if vram_bytes >= target_vram:
-            fit_type = "full_gpu"
-        elif vram_bytes >= target_vram * 0.4:
-            fit_type = "partial_offload"
-        else:
-            fit_type = "too_small"
-
-        speed = None
-        if fit_type != "too_small" and bandwidth:
-            speed = round(
-                estimate_tok_per_sec(model, fake_variant, gpu_info, fit_type), 1
-            )
-
-        gpus.append(
-            {
-                "name": gpu_name,
-                "vram_gb": vram_gb,
-                "fit_type": fit_type,
-                "estimated_tok_per_sec": speed,
-            }
-        )
+    vram_by_quant = plan_vram_by_quant(model, context_length)
+    target_vram = plan_target_vram(
+        model, context_length, target_quant, vram_by_quant
+    )
 
     output = {
         "model": {
@@ -247,7 +168,9 @@ def display_plan_json(
         "target_quant": target_quant,
         "context_length": context_length,
         "vram_by_quant": vram_by_quant,
-        "gpu_compatibility": gpus,
+        "gpu_compatibility": plan_gpu_compatibility(
+            model, target_quant, target_vram
+        ),
     }
     _console.console.print_json(json.dumps(output, ensure_ascii=False))
 
@@ -258,10 +181,10 @@ def display_upgrade_json(
     target_results: list[tuple[str, HardwareInfo, list]],
 ) -> None:
     """Emit the upgrade comparison as JSON for scripting."""
-    current_row = _summarize_row("Current", current_hw, current_results)
+    current_row = summarize_upgrade_row("Current", current_hw, current_results)
     rows = []
     for name, hw, res in target_results:
-        row = _summarize_row(name, hw, res)
+        row = summarize_upgrade_row(name, hw, res)
         row["delta_quality"] = row["top_quality"] - current_row["top_quality"]
         row["delta_tok_s"] = row["top_tok_s"] - current_row["top_tok_s"]
         rows.append(row)

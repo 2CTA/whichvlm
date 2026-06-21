@@ -94,7 +94,7 @@ def _is_vlm(model: ModelInfo) -> bool:
 def estimate_vision_overhead(model: ModelInfo, workload: VisionWorkload | None) -> int:
     """Estimate VLM-specific prefill/projector overhead.
 
-    This is conservative scaffolding, not a benchmark claim. Use explicit
+    This is a conservative estimate, not a benchmark claim. Use explicit
     component counts when present, then fall back to a bounded VLM heuristic.
     """
     if workload is None:

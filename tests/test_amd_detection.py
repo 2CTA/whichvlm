@@ -144,19 +144,19 @@ def test_display_amd_shared_memory_without_zero_kb(monkeypatch):
     assert "0 KB" not in output
 
 
-# ---------- Issue #61: RX 6750 XT detection ----------
+# ---------- RX 6750 XT detection ----------
 
 
 def test_sysfs_generic_name_enriched_by_lspci(monkeypatch, tmp_path):
     """When sysfs gives 'AMD Graphics' and lspci gives a descriptive name,
     the fallback should use the lspci name with sysfs VRAM."""
-    _GiB = 1024**3
+    BYTES_PER_GIB = 1024**3
 
     # sysfs: generic name but has VRAM
     card = tmp_path / "card0" / "device"
     card.mkdir(parents=True)
     (card / "vendor").write_text("0x1002\n")
-    (card / "mem_info_vram_total").write_text(str(12 * _GiB))
+    (card / "mem_info_vram_total").write_text(str(12 * BYTES_PER_GIB))
     # no product_name → falls back to "AMD Graphics"
 
     lspci_name = "Navi 22 [Radeon RX 6700/6700 XT/6750 XT / 6800M/6850M XT]"
@@ -168,20 +168,20 @@ def test_sysfs_generic_name_enriched_by_lspci(monkeypatch, tmp_path):
 
     assert len(gpus) == 1
     assert gpus[0].name == lspci_name
-    assert gpus[0].vram_bytes == 12 * _GiB
+    assert gpus[0].vram_bytes == 12 * BYTES_PER_GIB
     assert gpus[0].shared_memory is False
 
 
 def test_sysfs_product_name_preferred_over_lspci(monkeypatch, tmp_path):
     """When sysfs gives a real product name, it should be used even if
     lspci is also available."""
-    _GiB = 1024**3
+    BYTES_PER_GIB = 1024**3
 
     card = tmp_path / "card0" / "device"
     card.mkdir(parents=True)
     (card / "vendor").write_text("0x1002\n")
     (card / "product_name").write_text("AMD Radeon RX 6750 XT\n")
-    (card / "mem_info_vram_total").write_text(str(12 * _GiB))
+    (card / "mem_info_vram_total").write_text(str(12 * BYTES_PER_GIB))
 
     original_sysfs = amd._detect_from_sysfs
     monkeypatch.setattr(amd, "_detect_from_sysfs", lambda: original_sysfs(tmp_path))
@@ -195,7 +195,7 @@ def test_sysfs_product_name_preferred_over_lspci(monkeypatch, tmp_path):
 
     assert len(gpus) == 1
     assert gpus[0].name == "AMD Radeon RX 6750 XT"
-    assert gpus[0].vram_bytes == 12 * _GiB
+    assert gpus[0].vram_bytes == 12 * BYTES_PER_GIB
     assert gpus[0].memory_bandwidth_gbps == 432.0
 
 
@@ -204,7 +204,7 @@ def test_lspci_enriched_with_sysfs_vram_when_sysfs_detection_fails(
 ):
     """When _detect_from_sysfs returns nothing but _read_sysfs_amd_vram
     succeeds, lspci names should still get VRAM data."""
-    _GiB = 1024**3
+    BYTES_PER_GIB = 1024**3
 
     # _detect_from_sysfs returns nothing (e.g. product_name absent AND
     # the card dir structure confuses the glob), but individual VRAM reads
@@ -215,12 +215,12 @@ def test_lspci_enriched_with_sysfs_vram_when_sysfs_detection_fails(
         "_detect_from_lspci",
         lambda: ["Navi 22 [Radeon RX 6700/6700 XT/6750 XT / 6800M/6850M XT]"],
     )
-    monkeypatch.setattr(amd, "_read_sysfs_amd_vram", lambda: [12 * _GiB])
+    monkeypatch.setattr(amd, "_read_sysfs_amd_vram", lambda: [12 * BYTES_PER_GIB])
 
     gpus = amd._detect_amd_gpus_fallback()
 
     assert len(gpus) == 1
-    assert gpus[0].vram_bytes == 12 * _GiB
+    assert gpus[0].vram_bytes == 12 * BYTES_PER_GIB
     assert gpus[0].shared_memory is False
 
 

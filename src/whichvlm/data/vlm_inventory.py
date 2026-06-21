@@ -97,15 +97,17 @@ VLM_SEED_MODEL_IDS: Final[tuple[str, ...]] = (
 )
 
 
-def _norm(value: str) -> str:
+def normalize_vlm_match_text(value: str) -> str:
     return value.casefold().replace("_", "-")
 
 
 def canonical_vlm_family_id(model_id: str) -> str | None:
-    value = _norm(model_id)
+    value = normalize_vlm_match_text(model_id)
     name = value.split("/", 1)[1] if "/" in value else value
     for family_id, data in VLM_FAMILY_SEEDS.items():
-        if any(value == _norm(repo_id) for repo_id in data["canonical"]):
+        if any(
+            value == normalize_vlm_match_text(repo_id) for repo_id in data["canonical"]
+        ):
             return family_id
         if any(alias in name for alias in data["aliases"]):
             return family_id

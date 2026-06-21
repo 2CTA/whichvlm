@@ -43,9 +43,8 @@ QUANT_BYTES_PER_WEIGHT: dict[str, float] = {
     "IQ4_NL": 0.5,
 }
 
-# Quality penalty for each quantization type (fraction of quality lost)
-# Sub-2-bit and ternary quants lose 30-60% of model quality - whichvlm
-# previously fell back to 5% which over-rewarded extreme quants.
+# Quality penalty for each quantization type (fraction of quality lost).
+# Sub-2-bit and ternary quants lose 30-60% of model quality.
 QUANT_QUALITY_PENALTY: dict[str, float] = {
     "F32": 0.0,
     "F16": 0.0,

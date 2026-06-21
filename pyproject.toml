@@ -2,12 +2,9 @@
 name = "whichvlm"
 version = "0.1.0"
 description = "Find local VLMs that can run on your hardware"
-authors = [{name = "whichvlm contributors"}]
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
-homepage = "https://github.com/the whichvlm contributors/whichvlm"
-repository = "https://github.com/the whichvlm contributors/whichvlm"
 keywords = ["vlm", "vision-language-model", "multimodal", "gpu", "vram", "huggingface", "inference", "hardware", "cli", "recommendation"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -32,9 +29,6 @@ dependencies = [
     "nvidia-ml-py>=12.0",
 ]
 
-[project.urls]
-Upstream = "https://github.com/the whichvlm contributors/compatible multimodal source"
-
 [project.scripts]
 whichvlm = "whichvlm.cli:app"
 
@@ -47,9 +41,7 @@ packages = ["src/whichvlm"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = [
-    "real_hardware: opt-in benchmarks that use actual hardware, downloads, and runtimes",
-]
+pythonpath = ["src"]
 
 [dependency-groups]
 dev = [

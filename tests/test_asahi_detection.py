@@ -1,4 +1,4 @@
-"""Tests for Asahi Linux (Apple Silicon on Linux) detection — Issue #29."""
+"""Tests for Asahi Linux (Apple Silicon on Linux) detection."""
 
 from __future__ import annotations
 

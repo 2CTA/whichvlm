@@ -4,13 +4,12 @@ Detection passes the raw driver name (e.g. ``"NVIDIA GeForce RTX 5090 Laptop
 GPU"``). Unlike ``--gpu`` simulation, where the user typed the name and a fuzzy
 guess plus a ``(simulated)`` label is acceptable, a wrong match on real
 hardware is worse than no data: giving a laptop card its desktop bandwidth
-produces confidently wrong speed estimates and oversized recommendations
-(issues #74, #61, #93).
+produces confidently wrong speed estimates and oversized recommendations.
 
 So this resolver is deliberately strict:
 
 * The hand-curated ``GPU_BANDWIDTH`` table stays authoritative and is tried
-  first, so existing behaviour for known cards is unchanged.
+  first.
 * The curated lookup is mobile-aware: a laptop/Max-Q driver name will not match
   a desktop key (``"RTX 5090"`` no longer swallows ``"RTX 5090 Laptop GPU"``).
 * dbgpu is only consulted to fill gaps, and only via an exact normalised-name
@@ -19,9 +18,8 @@ So this resolver is deliberately strict:
   Max-Q / XT) can never be silently dropped onto the wrong card.
 * ``"Laptop GPU"`` in a driver name is normalised to dbgpu's ``"Mobile"``.
 
-The change is purely additive: cards already covered by ``GPU_BANDWIDTH`` keep
-their exact value, and cards that previously resolved to ``None`` now get a
-correct bandwidth whenever dbgpu can identify them safely.
+Cards covered by ``GPU_BANDWIDTH`` keep their exact value; dbgpu fills gaps
+only when it can identify the hardware safely.
 """
 
 from __future__ import annotations
@@ -30,7 +28,7 @@ import functools
 import logging
 import re
 
-from whichvlm.constants import GPU_BANDWIDTH, GPU_MEMORY_CLOCK_VARIANTS, _GiB
+from whichvlm.constants import GPU_BANDWIDTH, GPU_MEMORY_CLOCK_VARIANTS, BYTES_PER_GIB
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +39,7 @@ _TRAILING_GRAPHICS_RE = re.compile(r"\bgraphics\s*$", re.IGNORECASE)
 _WHITESPACE_RE = re.compile(r"\s+")
 _MOBILE_MARKER_RE = re.compile(r"\b(?:laptop|mobile|max-?q)\b", re.IGNORECASE)
 # Driver names write VRAM bins without a space ("RTX A2000 12GB"); dbgpu
-# writes "RTX A2000 12 GB" (#98).
+# writes "RTX A2000 12 GB".
 _VRAM_NOSPACE_RE = re.compile(r"\b(\d+)GB\b", re.IGNORECASE)
 _BRACKET_RE = re.compile(r"\[(.+)]")
 # A dbgpu name may extend a matched query with a VRAM-size bin only
@@ -50,7 +48,7 @@ _VRAM_SUFFIX_RE = re.compile(r"^\s+\d+\s*gb\b", re.IGNORECASE)
 _VRAM_GB_RE = re.compile(r"(\d+)\s*gb", re.IGNORECASE)
 
 
-def _normalize_detected_name(name: str) -> str:
+def normalize_detected_gpu_name(name: str) -> str:
     """Reduce a raw driver name toward dbgpu's naming convention."""
     text = _TRADEMARK_RE.sub("", name)
     text = _VENDOR_WORD_RE.sub("", text)
@@ -81,7 +79,7 @@ def _substring_bandwidth(name: str) -> float | None:
     return None
 
 
-def _static_bandwidth(name: str) -> float | None:
+def static_bandwidth(name: str) -> float | None:
     """Curated lookup that also handles compound lspci names.
 
     Compound names like ``"Navi 22 [Radeon RX 6700/6700 XT/6750 XT /
@@ -122,12 +120,12 @@ def _dbgpu_index() -> tuple[object | None, dict[str, str] | None]:
         from dbgpu import GPUDatabase
 
         db = GPUDatabase.default()
-    except Exception as exc:  # pragma: no cover - dbgpu is a hard dependency
+    except (ImportError, AttributeError, OSError, RuntimeError) as exc:  # pragma: no cover - dbgpu is optional at runtime
         logger.debug("dbgpu unavailable, using static bandwidth only: %s", exc)
         return None, None
     index: dict[str, str] = {}
     for canonical in db.names:
-        index.setdefault(_normalize_detected_name(canonical).lower(), canonical)
+        index.setdefault(normalize_detected_gpu_name(canonical).lower(), canonical)
     return db, index
 
 
@@ -136,7 +134,7 @@ def _dbgpu_bandwidth(name: str, vram_bytes: int | None) -> float | None:
     db, index = _dbgpu_index()
     if db is None or index is None:
         return None
-    query = _normalize_detected_name(name).lower()
+    query = normalize_detected_gpu_name(name).lower()
     if not query:
         return None
 
@@ -152,7 +150,7 @@ def _dbgpu_bandwidth(name: str, vram_bytes: int | None) -> float | None:
         if not candidates:
             return None
         if vram_bytes and len(candidates) > 1:
-            target_gb = round(vram_bytes / _GiB)
+            target_gb = round(vram_bytes / BYTES_PER_GIB)
             same_vram = [c for c in candidates if _vram_gb(c) == target_gb]
             if same_vram:
                 candidates = same_vram
@@ -212,4 +210,4 @@ def resolve_detected_bandwidth(
     variant = _memory_clock_variant_bandwidth(name, mem_clock_mhz)
     if variant is not None:
         return variant
-    return _static_bandwidth(name) or _dbgpu_bandwidth(name, vram_bytes)
+    return static_bandwidth(name) or _dbgpu_bandwidth(name, vram_bytes)

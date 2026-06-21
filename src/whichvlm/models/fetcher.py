@@ -91,7 +91,6 @@ _OFFICIAL_MODEL_ORGS = frozenset(
 
 
 def _extract_published_at(data: dict) -> str | None:
-    """APIレスポンスから公開日時候補を取り出す。"""
     created = data.get("createdAt")
     if isinstance(created, str) and created:
         return created
@@ -122,7 +121,7 @@ def _is_general_eval_entry(entry: dict) -> bool:
         return False
 
     notes = str(data.get("notes", "")).lower()
-    # ツール利用前提の数値はローカル推論の比較軸として混ざりやすいため除外する。
+    # Tool-use evals mix poorly with local inference quality comparisons.
     if "with tools" in notes:
         return False
 
@@ -648,7 +647,7 @@ def _parse_model(data: dict) -> ModelInfo | None:
         if file_size is None:
             file_size = 0
 
-        # 分割GGUFは量子化ごとに合算して1候補として扱う。
+        # Split GGUF shards are one candidate per quantization.
         quant_sizes[quant] = quant_sizes.get(quant, 0) + file_size
         if quant not in quant_first_filename or _GGUF_SPLIT_RE.search(
             quant_first_filename[quant]

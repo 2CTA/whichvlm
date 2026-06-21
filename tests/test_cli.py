@@ -26,7 +26,7 @@ from whichvlm.cli import (
     app,
 )
 from whichvlm.runtime import generate_run_script
-from whichvlm.utils import _current_version
+from whichvlm.utils import current_version
 from whichvlm.engine.types import CompatibilityResult
 from whichvlm.hardware.types import GPUInfo, HardwareInfo, has_backend
 from whichvlm.models.types import GGUFVariant, ModelArtifact, ModelInfo
@@ -156,7 +156,7 @@ def test_version_option_prints_version_and_exits():
     runner = CliRunner()
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert _current_version() in result.stdout
+    assert current_version() in result.stdout
 
 
 def test_module_entrypoint_uses_cli_app():
@@ -610,7 +610,10 @@ def test_plan_no_model_found_shows_error(monkeypatch):
 
 
 def test_plan_display_plan_renders_tables():
-    """display_plan should render model info, VRAM table, and GPU table."""
+    from io import StringIO
+
+    from rich.console import Console
+
     from whichvlm.output.display import display_plan
 
     model = ModelInfo(
@@ -624,8 +627,21 @@ def test_plan_display_plan_renders_tables():
         downloads=100,
         likes=10,
     )
-    # Should not raise
-    display_plan(model, context_length=4096, target_quant="Q4_K_M")
+    buf = StringIO()
+    import whichvlm.output._console as console_mod
+
+    orig_console = console_mod.console
+    console_mod.console = Console(file=buf, force_terminal=False, width=120)
+    try:
+        display_plan(model, context_length=4096, target_quant="Q4_K_M")
+    finally:
+        console_mod.console = orig_console
+
+    output = buf.getvalue()
+    assert "Model Info" in output
+    assert "VRAM Required" in output
+    assert "GPU Compatibility" in output
+    assert "test-org/Test-Model-7B-GGUF" in output
 
 
 def test_plan_display_plan_json_outputs_valid_json():
@@ -918,15 +934,15 @@ def test_resolve_ranked_synthetic_gguf_rejects_size_mismatch():
 # --------------- run/snippet command tests ---------------
 
 
-def test_run_exits_gracefully():
-    """run should fail gracefully (uv missing, or no model found)."""
+def test_run_reports_missing_model(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/uv")
+    monkeypatch.setattr(cli_mod, "_load_models", lambda refresh: [])
+
     runner = CliRunner()
     result = runner.invoke(app, ["run", "some-model"])
-    if result.exit_code != 0:
-        assert any(
-            msg in result.stdout
-            for msg in ("uv is required", "No model found", "llama-cpp-python")
-        )
+
+    assert result.exit_code != 0
+    assert "No model found matching 'some-model'" in result.stdout
 
 
 def test_transformers_chat_script_passes_tokenizer_mapping_to_generate():

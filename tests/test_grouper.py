@@ -1,5 +1,3 @@
-"""Tests for model grouping logic."""
-
 from whichvlm.models.grouper import _normalize_name, group_models
 from whichvlm.models.types import ModelArtifact, ModelInfo
 
@@ -24,14 +22,17 @@ def test_group_by_base_model():
     )
     families = group_models([base, gguf])
     assert len(families) == 1
-    assert families[0].base_model.id in ("meta/Llama-3-8B", "user/Llama-3-8B-GGUF")
+    assert families[0].base_model.id == "meta/Llama-3-8B"
+    assert [variant.id for variant in families[0].variants] == ["user/Llama-3-8B-GGUF"]
 
 
 def test_group_by_name_normalization():
     base = _make_model("org/model-v1", downloads=1000)
     gguf = _make_model("org/model-v1-GGUF", downloads=200)
     families = group_models([base, gguf])
-    assert len(families) <= 2  # may or may not merge depending on normalization
+    assert len(families) == 1
+    assert families[0].base_model.id == "org/model-v1"
+    assert [variant.id for variant in families[0].variants] == ["org/model-v1-GGUF"]
 
 
 def test_fp4_suffixes_normalize_to_base_family():

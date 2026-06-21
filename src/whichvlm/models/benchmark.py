@@ -13,11 +13,11 @@ from dataclasses import dataclass
 
 import httpx
 
-from whichvlm.utils import _cache_dir, _current_version
+from whichvlm.utils import cache_dir, current_version
 
 logger = logging.getLogger(__name__)
 
-CACHE_DIR = _cache_dir()
+CACHE_DIR = cache_dir()
 BENCHMARK_CACHE = CACHE_DIR / "benchmark.json"
 DEFAULT_TTL_SECONDS = 24 * 3600  # 24 hours
 
@@ -65,23 +65,26 @@ def _benchmark_confidence(model_id: str, source: str, default: float) -> float:
 
 
 def load_benchmark_cache() -> dict[str, float] | None:
-    """Load cached benchmark scores. Returns None if expired or missing."""
     if not BENCHMARK_CACHE.exists():
         return None
     try:
         data = json.loads(BENCHMARK_CACHE.read_text(encoding="utf-8"))
-        cached_at = data.get("cached_at", 0)
+        if not isinstance(data, dict):
+            return None
+        cached_at = data["cached_at"]
         if time.time() - cached_at > DEFAULT_TTL_SECONDS:
             logger.debug("Benchmark cache expired")
             return None
-        return data.get("scores", {})
-    except (json.JSONDecodeError, KeyError) as e:
+        scores = data["scores"]
+        if not isinstance(scores, dict):
+            return None
+        return scores
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
         logger.debug(f"Benchmark cache corrupted: {e}")
         return None
 
 
 def save_benchmark_cache(scores: dict[str, float]) -> None:
-    """Save benchmark scores to cache."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     data = {"cached_at": time.time(), "scores": scores}
     BENCHMARK_CACHE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
@@ -178,7 +181,7 @@ async def fetch_benchmark_scores() -> dict[str, float]:
     )
 
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-        client.headers["User-Agent"] = f"whichvlm/{_current_version()}"
+        client.headers["User-Agent"] = f"whichvlm/{current_version()}"
         leaderboard_task = asyncio.create_task(fetch_leaderboard_with_fallback(client))
         arena_task = asyncio.create_task(fetch_arena_scores(client))
         aa_task = asyncio.create_task(fetch_aa_index_scores(client))
@@ -225,7 +228,7 @@ async def fetch_benchmark_scores() -> dict[str, float]:
                 frozen[k] = v
         logger.debug(f"Arena: {len(arena_result)} scores (frozen)")
 
-    # Current tier: LiveBench (vendored snapshot)
+    # Current tier: LiveBench
     livebench_result = get_livebench_data()
     for k, v in livebench_result.items():
         if current.get(k, 0.0) < v:

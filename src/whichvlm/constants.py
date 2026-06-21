@@ -11,7 +11,7 @@ from whichvlm.data.framework import (
     MIN_COMPUTE_CAPABILITY_VLLM,
 )
 from whichvlm.data.gpu import (
-    _GiB,
+    BYTES_PER_GIB,
     AMD_SHARED_MEMORY_APU_MARKERS,
     GPU_BANDWIDTH,
     GPU_MEMORY_CLOCK_VARIANTS,
@@ -30,7 +30,7 @@ from whichvlm.data.quantization import (
 )
 
 __all__ = [
-    "_GiB",
+    "BYTES_PER_GIB",
     "AMD_SHARED_MEMORY_APU_MARKERS",
     "FRAMEWORK_OVERHEAD_BYTES",
     "GPU_BANDWIDTH",

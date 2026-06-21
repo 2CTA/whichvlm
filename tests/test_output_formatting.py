@@ -2,7 +2,7 @@
 
 from whichvlm.engine.types import CompatibilityResult
 from whichvlm.models.types import ModelInfo
-from whichvlm.output.formatting import _format_speed
+from whichvlm.output.formatting import format_speed
 
 
 def speed_result(speed: float, confidence: str) -> CompatibilityResult:
@@ -23,10 +23,10 @@ def speed_result(speed: float, confidence: str) -> CompatibilityResult:
 
 
 def test_format_speed_colors_by_runtime_speed_not_confidence():
-    assert _format_speed(speed_result(2.5, "medium")) == "[red]2.5 tok/s ~[/red]"
-    assert _format_speed(speed_result(6.0, "low")) == "[yellow]6.0 tok/s ?[/yellow]"
-    assert _format_speed(speed_result(12.0, "medium")) == "[green]12.0 tok/s ~[/green]"
+    assert format_speed(speed_result(2.5, "medium")) == "[red]2.5 tok/s ~[/red]"
+    assert format_speed(speed_result(6.0, "low")) == "[yellow]6.0 tok/s ?[/yellow]"
+    assert format_speed(speed_result(12.0, "medium")) == "[green]12.0 tok/s ~[/green]"
     assert (
-        _format_speed(speed_result(30.0, "low"))
+        format_speed(speed_result(30.0, "low"))
         == "[bright_green]30.0 tok/s ?[/bright_green]"
     )

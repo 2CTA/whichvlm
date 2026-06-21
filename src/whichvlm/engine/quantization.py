@@ -48,8 +48,8 @@ _NON_GGUF_QUALITY_PENALTY: dict[str, float] = {
     "FP16": 0.0,
 }
 
+
 def infer_non_gguf_quant_type(model_id: str) -> str:
-    """Infer non-GGUF quantization type from a model repo ID."""
     lower = model_id.lower()
     for pattern, quant_type in _NON_GGUF_PATTERNS:
         if re.search(pattern, lower):
@@ -58,7 +58,6 @@ def infer_non_gguf_quant_type(model_id: str) -> str:
 
 
 def effective_quant_type(model: ModelInfo, variant: GGUFVariant | None) -> str:
-    """Return effective quantization type for a model+variant pair."""
     if variant:
         return variant.quant_type.upper()
     return infer_non_gguf_quant_type(model.id)
@@ -69,7 +68,6 @@ def _bytes_per_weight(quant_type: str) -> float:
 
 
 def estimate_weight_bytes(model: ModelInfo, variant: GGUFVariant | None) -> int:
-    """Estimate model weight size in bytes."""
     if variant:
         return variant.file_size_bytes
     quant_type = infer_non_gguf_quant_type(model.id)
@@ -95,7 +93,6 @@ def estimate_weight_bytes(model: ModelInfo, variant: GGUFVariant | None) -> int:
 
 
 def quant_quality_penalty(model: ModelInfo, variant: GGUFVariant | None) -> float:
-    """Return quality penalty fraction for a quantization format."""
     quant_type = effective_quant_type(model, variant).upper()
     if quant_type in QUANT_QUALITY_PENALTY:
         return QUANT_QUALITY_PENALTY[quant_type]

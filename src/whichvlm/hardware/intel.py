@@ -34,7 +34,7 @@ def _detect_from_lspci() -> list[str]:
             text=True,
             timeout=5,
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired):
         logger.debug("lspci not available or timed out")
         return []
 

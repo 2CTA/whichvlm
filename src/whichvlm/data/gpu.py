@@ -1,6 +1,6 @@
 """GPU bandwidth, NVIDIA compute capability, and AMD shared-memory APU markers."""
 
-_GiB = 1024**3
+BYTES_PER_GIB = 1024**3
 
 AMD_SHARED_MEMORY_APU_MARKERS: tuple[str, ...] = (
     "STRIX HALO",

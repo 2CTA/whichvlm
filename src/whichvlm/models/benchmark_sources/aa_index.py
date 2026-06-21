@@ -19,12 +19,29 @@ import re
 
 import httpx
 
-from whichvlm.models.benchmark_sources.constants import _NEXT_DATA_RE
-from whichvlm.models.benchmark_sources.types import ExtractionFailed
-from whichvlm.models.benchmark_sources.utils import _walk
 from whichvlm.models.http import get_with_retries
 
 logger = logging.getLogger(__name__)
+
+_NEXT_DATA_RE = re.compile(
+    r'<script id="__NEXT_DATA__"[^>]*>(?P<json>.*?)</script>', re.DOTALL
+)
+
+
+class ExtractionFailed(Exception):
+    pass
+
+
+def walk_json_dicts(obj, depth: int = 0):
+    if depth > 12:
+        return
+    if isinstance(obj, dict):
+        yield obj
+        for value in obj.values():
+            yield from walk_json_dicts(value, depth + 1)
+    elif isinstance(obj, list):
+        for item in obj:
+            yield from walk_json_dicts(item, depth + 1)
 
 # Display name -> list of (org_prefix, repo_name_candidates) tuples used to
 # map AA-reported labels back to HuggingFace model IDs. Only the most common
@@ -269,7 +286,7 @@ def _extract_aa_pairs(payload: dict) -> list[tuple[str, float]]:
     """Walk the Next.js payload looking for {name, intelligenceIndex}-shaped
     objects regardless of where they are nested."""
     pairs: list[tuple[str, float]] = []
-    for node in _walk(payload):
+    for node in walk_json_dicts(payload):
         # Look for the most common shapes AA has used in past iterations.
         name = None
         score = None

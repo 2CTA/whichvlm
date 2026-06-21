@@ -23,9 +23,9 @@ def estimate_usable_ram(total: int) -> int:
 
     Uses a bounded-reserve formula: total - clamp(total * 0.15, 4 GiB, 32 GiB).
     """
-    _GiB = 1024**3
+    BYTES_PER_GIB = 1024**3
     reserve = int(total * 0.15)
-    reserve = max(4 * _GiB, min(reserve, 32 * _GiB))
+    reserve = max(4 * BYTES_PER_GIB, min(reserve, 32 * BYTES_PER_GIB))
     return max(0, total - reserve)
 
 

@@ -1,5 +1,3 @@
-"""CPU detection: name, cores, AVX2/AVX512 support."""
-
 from __future__ import annotations
 
 import logging
@@ -12,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 
 def _cpu_name_from_lscpu() -> str | None:
-    """Try to get CPU model name from lscpu (works on ARM/aarch64)."""
     try:
         result = subprocess.run(["lscpu"], capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
@@ -21,13 +18,12 @@ def _cpu_name_from_lscpu() -> str | None:
                     name = line.split(":", 1)[1].strip()
                     if name and name != "-":
                         return name
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired):
         pass
     return None
 
 
 def _cpu_name_from_devicetree() -> str | None:
-    """Extract CPU/chip name from device tree (ARM Linux, Asahi)."""
     try:
         raw = Path("/sys/firmware/devicetree/base/model").read_bytes()
         model = raw.decode("utf-8", errors="replace").strip().rstrip("\x00")
@@ -59,7 +55,7 @@ def _cpu_name_from_wmic() -> str | None:
             text=True,
             timeout=5,
         )
-    except (FileNotFoundError, subprocess.SubprocessError, OSError):
+    except (subprocess.SubprocessError, OSError):
         return None
 
     if result.returncode != 0:
@@ -84,7 +80,7 @@ def _cpu_name_from_windows_cim() -> str | None:
                 text=True,
                 timeout=5,
             )
-        except (FileNotFoundError, subprocess.SubprocessError, OSError):
+        except (subprocess.SubprocessError, OSError):
             continue
 
         if result.returncode != 0:
@@ -98,41 +94,41 @@ def _cpu_name_from_windows_cim() -> str | None:
 
 
 def detect_cpu_name() -> str:
-    """Get CPU model name."""
     system = platform.system()
-    try:
-        if system == "Linux":
+    if system == "Linux":
+        try:
             with open("/proc/cpuinfo") as f:
                 for line in f:
                     if line.startswith("model name"):
                         return line.split(":", 1)[1].strip()
-            # ARM/aarch64: /proc/cpuinfo has no model name field.
-            # Try lscpu, then device tree.
-            name = _cpu_name_from_lscpu() or _cpu_name_from_devicetree()
-            if name:
-                return name
-        elif system == "Darwin":
+        except OSError as e:
+            logger.debug(f"Failed to read /proc/cpuinfo: {e}")
+        name = _cpu_name_from_lscpu() or _cpu_name_from_devicetree()
+        if name:
+            return name
+    elif system == "Darwin":
+        try:
             result = subprocess.run(
                 ["sysctl", "-n", "machdep.cpu.brand_string"],
                 capture_output=True,
                 text=True,
                 timeout=5,
             )
+        except (subprocess.SubprocessError, OSError) as e:
+            logger.debug(f"Failed to run sysctl for CPU name: {e}")
+        else:
             if result.returncode == 0:
                 name = _clean_cpu_name(result.stdout)
                 if name:
                     return name
-        elif system == "Windows":
-            name = _cpu_name_from_wmic() or _cpu_name_from_windows_cim()
-            if name:
-                return name
-    except Exception as e:
-        logger.debug(f"Failed to detect CPU name: {e}")
+    elif system == "Windows":
+        name = _cpu_name_from_wmic() or _cpu_name_from_windows_cim()
+        if name:
+            return name
     return "Unknown CPU"
 
 
 def _count_physical_cores_linux() -> int | None:
-    """Count unique physical cores from /proc/cpuinfo (handles WSL2)."""
     try:
         physical_ids: set[tuple[str, str]] = set()
         current_physical = ""
@@ -146,13 +142,12 @@ def _count_physical_cores_linux() -> int | None:
                     physical_ids.add((current_physical, current_core))
         if physical_ids:
             return len(physical_ids)
-    except Exception:
+    except OSError:
         pass
     return None
 
 
 def detect_cpu_cores() -> int:
-    """Get number of physical CPU cores."""
     import psutil
 
     cores = psutil.cpu_count(logical=False)
@@ -169,7 +164,6 @@ def detect_cpu_cores() -> int:
 
 
 def _detect_avx_linux() -> tuple[bool, bool]:
-    """Detect AVX2/AVX512 on Linux via /proc/cpuinfo."""
     has_avx2 = False
     has_avx512 = False
     try:
@@ -182,13 +176,12 @@ def _detect_avx_linux() -> tuple[bool, bool]:
                     break
             has_avx2 = "avx2" in flags_line
             has_avx512 = "avx512f" in flags_line
-    except Exception:
+    except OSError:
         pass
     return has_avx2, has_avx512
 
 
 def _detect_avx_darwin() -> tuple[bool, bool]:
-    """Detect AVX2/AVX512 on macOS via sysctl."""
     has_avx2 = False
     has_avx512 = False
     try:
@@ -199,7 +192,7 @@ def _detect_avx_darwin() -> tuple[bool, bool]:
             timeout=5,
         )
         has_avx2 = result.stdout.strip() == "1"
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         pass
     try:
         result = subprocess.run(
@@ -209,13 +202,12 @@ def _detect_avx_darwin() -> tuple[bool, bool]:
             timeout=5,
         )
         has_avx512 = result.stdout.strip() == "1"
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         pass
     return has_avx2, has_avx512
 
 
 def detect_avx_support() -> tuple[bool, bool]:
-    """Detect AVX2 and AVX512 support. Returns (has_avx2, has_avx512)."""
     system = platform.system()
     if system == "Linux":
         return _detect_avx_linux()

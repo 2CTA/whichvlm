@@ -7,10 +7,11 @@ import re
 import sys
 from typing import Optional
 
+import httpx
 import typer
 from rich.console import Console
 
-from whichvlm.constants import _GiB
+from whichvlm.constants import BYTES_PER_GIB
 from whichvlm.engine.workload import VisionWorkload
 from whichvlm.hardware.types import HardwareInfo
 from whichvlm.models.types import GGUFVariant, ModelInfo
@@ -20,7 +21,7 @@ from whichvlm.runtime import (
     requires_image,
     resolve_model_deps,
 )
-from whichvlm.utils import _current_version, CONTEXT_LENGTH
+from whichvlm.utils import current_version, CONTEXT_LENGTH
 
 app = typer.Typer(
     name="whichvlm",
@@ -31,10 +32,7 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
-
-
-def _run_async(coro):
-    return asyncio.run(coro)
+FETCH_ERRORS = (httpx.HTTPError, OSError, ValueError)
 
 
 def vlm_progress():
@@ -67,7 +65,7 @@ def _format_fetch_error(error: Exception) -> str:
 
 def _print_version(value: bool) -> None:
     if value:
-        console.print(_current_version())
+        console.print(current_version())
         raise typer.Exit()
 
 
@@ -113,7 +111,7 @@ def _validate_evidence(evidence: str) -> str:
 def _resolve_evidence_mode(evidence: str, direct: bool) -> str:
     mode = _validate_evidence(evidence)
     if direct:
-        # 互換性維持のため --direct は strict と同義に固定する。
+        # Preserve --direct as the old spelling for strict evidence.
         return "strict"
     return mode
 
@@ -187,14 +185,14 @@ def _parse_memory_amount(
         raise typer.Exit(code=1)
 
     if unit in {"gib", "gb", "g"}:
-        return int(number * _GiB)
+        return int(number * BYTES_PER_GIB)
     return int(number * 1024**2)
 
 
 def _auto_vram_headroom(vram_bytes: int) -> int:
     if vram_bytes <= 0:
         return 0
-    return int(max(512 * 1024**2, min(vram_bytes * 0.05, 2 * _GiB)))
+    return int(max(512 * 1024**2, min(vram_bytes * 0.05, 2 * BYTES_PER_GIB)))
 
 
 def _parse_vram_headroom(value: str, vram_bytes: int) -> int:
@@ -222,7 +220,7 @@ def _apply_memory_budgets(
         _parse_memory_amount(
             vram_headroom,
             option_name="--vram-headroom",
-            total_bytes=_GiB,
+            total_bytes=BYTES_PER_GIB,
         )
 
     reserved_values: list[int] = []
@@ -260,8 +258,8 @@ def _apply_memory_budgets(
 
 
 def _format_budget_bytes(value: int) -> str:
-    if value >= _GiB:
-        return f"{value / _GiB:.1f} GB"
+    if value >= BYTES_PER_GIB:
+        return f"{value / BYTES_PER_GIB:.1f} GB"
     if value >= 1024**2:
         return f"{value / 1024**2:.0f} MB"
     return f"{value / 1024:.0f} KB"
@@ -349,11 +347,10 @@ def _fill_missing_published_at(
     results: list,
     fetch_model_published_at,
 ) -> bool:
-    """上位表示で欠けている公開日時を補完し、更新有無を返す。"""
     missing_ids = [r.model.id for r in results if not r.model.published_at]
     if not missing_ids:
         return False
-    published_map = _run_async(fetch_model_published_at(missing_ids))
+    published_map = asyncio.run(fetch_model_published_at(missing_ids))
     if not published_map:
         return False
 
@@ -370,20 +367,7 @@ def _merge_model_eval_benchmarks(
     models: list,
     benchmark_scores: dict[str, float],
 ) -> tuple[dict[str, float], int]:
-    """Deprecated no-op kept for backward API compatibility.
-
-    Previously this injected each model's uploader-reported ``hf_eval``
-    value into the leaderboard scores dict under the model's id, which
-    caused those values to be treated as ``direct`` benchmark evidence
-    by the ranker. That elevated any account that wrote a high number
-    in their model card to the top of the rankings.
-
-    The hf_eval value is now consumed inside ``rank_models`` via
-    ``BenchmarkEvidence.source == "self_reported"`` with a much lower
-    weight and a dedicated display tag, so we no longer need to mutate
-    the leaderboard dict here. Returning the input unchanged keeps any
-    external callers working.
-    """
+    """Keep card-provided evals out of independent benchmark scores."""
     return benchmark_scores, 0
 
 
@@ -516,11 +500,9 @@ def main(
         load_benchmark_cache,
         save_benchmark_cache,
     )
-    from whichvlm.models.cache import load_cache, save_cache
+    from whichvlm.models.cache import save_cache
     from whichvlm.models.fetcher import (
-        dicts_to_models,
         fetch_model_published_at,
-        fetch_models,
         models_to_dicts,
     )
     from whichvlm.models.grouper import group_models
@@ -541,36 +523,18 @@ def main(
         progress.update(task, description="hardware mapped")
 
         progress.update(task, description="loading VLM packages...")
-        cached_data = None if refresh else load_cache()
-        if cached_data is not None:
-            models = dicts_to_models(cached_data)
-            progress.update(
-                task, description=f"loaded {len(models)} packages from cache"
-            )
-        else:
-            progress.update(
-                task, description="fetching package graph from Hugging Face..."
-            )
-            try:
-                models = _run_async(
-                    fetch_models(include_vision=_include_vision_candidates(profile))
-                )
-                save_cache(models_to_dicts(models))
-                progress.update(task, description=f"fetched {len(models)} packages")
-            except Exception as e:
-                console.print(
-                    f"[red]Error fetching models:[/] {_format_fetch_error(e)}"
-                )
-                sys.exit(1)
+        models = _load_models(
+            refresh, include_vision=_include_vision_candidates(profile)
+        )
 
         progress.update(task, description="loading benchmark index...")
         bench_scores = None if refresh else load_benchmark_cache()
         if bench_scores is None:
             try:
                 progress.update(task, description="fetching benchmark index...")
-                bench_scores = _run_async(fetch_benchmark_scores())
+                bench_scores = asyncio.run(fetch_benchmark_scores())
                 save_benchmark_cache(bench_scores)
-            except Exception as e:
+            except FETCH_ERRORS as e:
                 console.print(f"[yellow]Warning:[/] Benchmark data unavailable: {e}")
                 bench_scores = {}
 
@@ -583,12 +547,6 @@ def main(
             all_models.append(family.base_model)
             all_models.extend(family.variants)
 
-        # NOTE: We no longer merge uploader-reported hf_eval values into the
-        # leaderboard scores dict — the ranker now treats them as a separate
-        # "self_reported" evidence tier with much lower trust. See
-        # ranker.lookup_benchmark_evidence + _SOURCE_WEIGHTS.
-
-        # general用途はGPUクラスに応じた自動しきい値で小さすぎるモデルを抑制する
         auto_min_params = (
             _auto_min_params_for_profile(hardware, profile)
             if min_params is None
@@ -617,7 +575,7 @@ def main(
             vision_workload=vision_workload,
         )
 
-        # 自動しきい値で候補ゼロなら緩和して表示を維持する
+        # If the auto floor hides every candidate, relax it so the user still sees options.
         if not results and auto_min_params is not None and min_params is None:
             results = rank_models(
                 all_models,
@@ -635,14 +593,14 @@ def main(
                 vision_workload=vision_workload,
             )
 
-        # 上位候補の公開日時が欠けている場合のみ補完して表示品質を上げる
+        # Backfill dates only for visible results.
         if results:
             try:
                 if _fill_missing_published_at(
                     all_models, results, fetch_model_published_at
                 ):
                     save_cache(models_to_dicts(models))
-            except Exception as e:
+            except FETCH_ERRORS as e:
                 progress.update(
                     task, description=f"Published date backfill skipped: {e}"
                 )
@@ -696,27 +654,11 @@ def plan(
     ),
 ):
     """Show what GPU you need to run a specific model."""
-    from whichvlm.models.cache import load_cache, save_cache
-    from whichvlm.models.fetcher import dicts_to_models, fetch_models, models_to_dicts
     from whichvlm.output.display import display_plan, display_plan_json
 
     with vlm_progress() as progress:
         task = progress.add_task("loading VLM packages...", total=None)
-        cached_data = None if refresh else load_cache()
-        if cached_data is not None:
-            models = dicts_to_models(cached_data)
-        else:
-            progress.update(
-                task, description="fetching package graph from Hugging Face..."
-            )
-            try:
-                models = _run_async(fetch_models(include_vision=True))
-                save_cache(models_to_dicts(models))
-            except Exception as e:
-                console.print(
-                    f"[red]Error fetching models:[/] {_format_fetch_error(e)}"
-                )
-                sys.exit(1)
+        models = _load_models(refresh, include_vision=True)
 
     model = _search_model(models, model_name)
 
@@ -780,8 +722,6 @@ def upgrade(
         load_benchmark_cache,
         save_benchmark_cache,
     )
-    from whichvlm.models.cache import load_cache, save_cache
-    from whichvlm.models.fetcher import dicts_to_models, fetch_models, models_to_dicts
     from whichvlm.models.grouper import group_models
     from whichvlm.output.display import display_upgrade, display_upgrade_json
 
@@ -794,31 +734,17 @@ def upgrade(
             current_hw.gpus = []
 
         progress.update(task, description="loading VLM packages...")
-        cached_data = None if refresh else load_cache()
-        if cached_data is not None:
-            models = dicts_to_models(cached_data)
-        else:
-            progress.update(
-                task, description="fetching package graph from Hugging Face..."
-            )
-            try:
-                models = _run_async(
-                    fetch_models(include_vision=_include_vision_candidates(profile))
-                )
-                save_cache(models_to_dicts(models))
-            except Exception as e:
-                console.print(
-                    f"[red]Error fetching models:[/] {_format_fetch_error(e)}"
-                )
-                raise typer.Exit(code=1)
+        models = _load_models(
+            refresh, include_vision=_include_vision_candidates(profile)
+        )
 
         progress.update(task, description="loading benchmark index...")
         bench_scores = None if refresh else load_benchmark_cache()
         if bench_scores is None:
             try:
-                bench_scores = _run_async(fetch_benchmark_scores())
+                bench_scores = asyncio.run(fetch_benchmark_scores())
                 save_benchmark_cache(bench_scores)
-            except Exception as e:
+            except FETCH_ERRORS as e:
                 console.print(f"[yellow]Warning:[/] Benchmark data unavailable: {e}")
                 bench_scores = {}
 
@@ -900,10 +826,10 @@ def _load_models(refresh: bool, include_vision: bool = True):
     if cached_data is not None:
         return dicts_to_models(cached_data)
     try:
-        models = _run_async(fetch_models(include_vision=include_vision))
+        models = asyncio.run(fetch_models(include_vision=include_vision))
         save_cache(models_to_dicts(models))
         return models
-    except Exception as e:
+    except FETCH_ERRORS as e:
         console.print(f"[red]Error fetching models:[/] {_format_fetch_error(e)}")
         sys.exit(1)
 

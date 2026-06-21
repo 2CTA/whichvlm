@@ -15,14 +15,14 @@ from whichvlm.engine.types import CompatibilityResult
 from whichvlm.hardware.types import HardwareInfo
 from whichvlm.output import _console
 from whichvlm.output.formatting import (
-    _downloads_style,
-    _format_bytes,
-    _format_downloads,
-    _format_params,
-    _format_published_at,
-    _format_speed,
-    _parse_published_at,
-    _published_style,
+    downloads_style,
+    format_bytes,
+    format_downloads,
+    format_params,
+    format_published_at,
+    format_speed,
+    parse_published_at,
+    published_style,
 )
 
 ACCENT = "#f472b6"
@@ -83,7 +83,7 @@ def _top_pick_confidence(results: list[CompatibilityResult]) -> tuple[str, str]:
         confidence = "Low"
         reason = f"direct benchmark but very close (+{gap:.1f}){risk_note}"
 
-    # オフロード/CPU-only/低信頼speedの1位は実運用で不確実性が高いため信頼度を1段階下げる
+    # Partial offload, CPU-only, and low-confidence speed estimates make the top pick less certain.
     if top.fit_type != "full_gpu" or top.speed_confidence == "low":
         if confidence == "High":
             confidence = "Medium"
@@ -99,17 +99,17 @@ def display_hardware(hw: HardwareInfo) -> None:
         for i, gpu in enumerate(hw.gpus):
             if gpu.shared_memory:
                 vram = (
-                    f"{_format_bytes(gpu.vram_bytes)} shared"
+                    f"{format_bytes(gpu.vram_bytes)} shared"
                     if gpu.vram_bytes > 0
                     else "shared memory"
                 )
             else:
-                vram = _format_bytes(gpu.vram_bytes)
+                vram = format_bytes(gpu.vram_bytes)
             if (
                 gpu.usable_vram_bytes is not None
                 and gpu.usable_vram_bytes < gpu.vram_bytes
             ):
-                vram += f" (budget {_format_bytes(gpu.usable_vram_bytes)})"
+                vram += f" (budget {format_bytes(gpu.usable_vram_bytes)})"
             bw = (
                 f"{gpu.memory_bandwidth_gbps:.0f} GB/s"
                 if gpu.memory_bandwidth_gbps
@@ -152,11 +152,11 @@ def display_hardware(hw: HardwareInfo) -> None:
     avx_str = f" ({', '.join(avx_flags)})" if avx_flags else ""
     lines.append(f"[bold {CYAN}]CPU[/] {hw.cpu_name} - {hw.cpu_cores} cores{avx_str}")
 
-    ram = _format_bytes(hw.ram_bytes)
+    ram = format_bytes(hw.ram_bytes)
     if hw.ram_budget_bytes is not None and hw.ram_budget_bytes < hw.ram_bytes:
-        ram += f" (budget {_format_bytes(hw.ram_budget_bytes)})"
+        ram += f" (budget {format_bytes(hw.ram_budget_bytes)})"
     lines.append(f"[bold {CYAN}]RAM[/] {ram}")
-    lines.append(f"[bold {CYAN}]Disk[/] {_format_bytes(hw.disk_free_bytes)} free")
+    lines.append(f"[bold {CYAN}]Disk[/] {format_bytes(hw.disk_free_bytes)} free")
     lines.append(f"[bold {CYAN}]OS[/] {hw.os}")
     for note in hw.budget_notes:
         lines.append(f"[dim]{note}[/dim]")
@@ -211,15 +211,15 @@ def display_ranking(
     ]
     min_download_log = min(download_logs) if download_logs else 0.0
     max_download_log = max(download_logs) if download_logs else 1.0
-    published_dates = [_parse_published_at(r.model.published_at) for r in results]
+    published_dates = [parse_published_at(r.model.published_at) for r in results]
     published_valid = [d for d in published_dates if d is not None]
     oldest_ts = min((d.timestamp() for d in published_valid), default=None)
     newest_ts = max((d.timestamp() for d in published_valid), default=None)
 
     for i, r in enumerate(results, 1):
         quant = effective_quant_type(r.model, r.gguf_variant)
-        vram_str = _format_bytes(r.vram_required_bytes)
-        speed_str = _format_speed(r)
+        vram_str = format_bytes(r.vram_required_bytes)
+        speed_str = format_speed(r)
 
         score_val = f"{r.quality_score:.1f}"
         if r.benchmark_status == "none":
@@ -237,21 +237,21 @@ def display_ranking(
             "cpu_only": "[red]CPU only[/]",
         }
         fit_str = fit_style.get(r.fit_type, r.fit_type)
-        published_dt = _parse_published_at(r.model.published_at)
+        published_dt = parse_published_at(r.model.published_at)
         published_str = Text(
-            _format_published_at(r.model.published_at),
-            style=_published_style(published_dt, oldest_ts, newest_ts),
+            format_published_at(r.model.published_at),
+            style=published_style(published_dt, oldest_ts, newest_ts),
         )
         downloads_str = Text(
-            _format_downloads(r.model.downloads),
-            style=_downloads_style(
+            format_downloads(r.model.downloads),
+            style=downloads_style(
                 r.model.downloads, min_download_log, max_download_log
             ),
         )
 
-        params_str = _format_params(r.model.parameter_count)
+        params_str = format_params(r.model.parameter_count)
         if r.model.is_moe and r.model.parameter_count_active:
-            params_str += f" ({_format_params(r.model.parameter_count_active)}a)"
+            params_str += f" ({format_params(r.model.parameter_count_active)}a)"
 
         model_link = Text(r.model.id, style=CYAN)
         model_link.stylize(f"link https://huggingface.co/{r.model.id}")
@@ -324,7 +324,7 @@ def display_ranking(
         "vision scores lead VLMs, text scores are fallback evidence.[/dim]"
     )
 
-    # 上位が僅差なら「断定しすぎない」ための注意を表示する
+    # Close top scores should be presented as a tie, not as a decisive winner.
     if len(results) >= 2:
         gap = results[0].quality_score - results[1].quality_score
         if gap < 1.5:
@@ -332,7 +332,7 @@ def display_ranking(
                 f"  [yellow]Note:[/] Top candidates are very close (#{1} vs #{2}: {gap:.1f} pts)."
             )
 
-    # 上位に根拠が弱い候補がある場合は目立つ注意を出す
+    # Surface weak evidence when it affects visible top candidates.
     weak_top = [
         idx + 1 for idx, r in enumerate(results[:3]) if r.benchmark_status != "direct"
     ]

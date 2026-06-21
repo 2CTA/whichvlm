@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from whichvlm.constants import _GiB
+from whichvlm.constants import BYTES_PER_GIB
 from whichvlm.constants import MIN_COMPUTE_CAPABILITY_OLLAMA
 from whichvlm.constants import VULKAN_ONLY_GPUS
 from whichvlm.engine.quantization import estimate_weight_bytes
@@ -13,7 +13,7 @@ from whichvlm.hardware.memory import effective_usable_ram
 from whichvlm.hardware.types import GPUInfo, HardwareInfo
 from whichvlm.models.types import GGUFVariant, ModelInfo
 
-_MULTI_GPU_FRAMEWORK_OVERHEAD_BYTES = int(0.3 * _GiB)
+_MULTI_GPU_FRAMEWORK_OVERHEAD_BYTES = int(0.3 * BYTES_PER_GIB)
 _MULTI_GPU_HOMOGENEOUS_UTILIZATION = 0.95
 _MULTI_GPU_HETEROGENEOUS_UTILIZATION = 0.90
 
@@ -24,7 +24,7 @@ def _gpu_available_memory(
     vram_bytes = (
         gpu.usable_vram_bytes if gpu.usable_vram_bytes is not None else gpu.vram_bytes
     )
-    if gpu.shared_memory and vram_bytes < 2 * _GiB:
+    if gpu.shared_memory and vram_bytes < 2 * BYTES_PER_GIB:
         return usable_ram
     if gpu.shared_memory and ram_budget_active:
         return min(vram_bytes, usable_ram)
@@ -32,7 +32,7 @@ def _gpu_available_memory(
 
 
 def _uses_shared_system_pool(gpu: GPUInfo) -> bool:
-    return gpu.shared_memory and gpu.vram_bytes < 2 * _GiB
+    return gpu.shared_memory and gpu.vram_bytes < 2 * BYTES_PER_GIB
 
 
 def _is_vulkan_only_gpu(gpu: GPUInfo) -> bool:
@@ -106,7 +106,7 @@ def _multi_gpu_effective_vram(
 
     warnings.append(
         "Multi-GPU fit uses a conservative layer-split budget: "
-        f"{effective / _GiB:.1f} GB effective from {raw_total / _GiB:.1f} GB raw VRAM"
+        f"{effective / BYTES_PER_GIB:.1f} GB effective from {raw_total / BYTES_PER_GIB:.1f} GB raw VRAM"
     )
     if not homogeneous:
         warnings.append(

@@ -27,7 +27,7 @@ def test_normalize_param_count_for_quantized_repo_uses_size_hint():
 def test_normalize_param_count_keeps_reasonable_value():
     kept = _normalize_param_count(
         extracted=11_765_788_416,
-        model_id="MaziyarPanahi/gemma-3-12b-it-GGUF",
+        model_id="community-quants/gemma-3-12b-it-GGUF",
         base_model="google/gemma-3-12b-it",
     )
     assert kept == 11_765_788_416
@@ -374,7 +374,7 @@ def test_extract_hf_eval_score_uses_general_datasets_and_median():
             ]
         }
     )
-    # general対象(mmlu/gsm8k)のみ集計し、中央値を使う。
+    # Only general evals (MMLU/GSM8K here) contribute, using their median.
     assert score == 66.4
 
 
@@ -402,7 +402,7 @@ def test_parse_model_extracts_hf_eval_benchmark_score():
     assert parsed.benchmark_scores.get("hf_eval") == 66.4
 
 
-def test_parse_model_keeps_vlm_inventory_scaffolding():
+def test_parse_model_builds_vlm_package_metadata():
     parsed = _parse_model(
         {
             "id": "Qwen/Qwen2.5-VL-7B-Instruct",

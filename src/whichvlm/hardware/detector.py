@@ -1,8 +1,5 @@
-"""Unified hardware detection orchestrator."""
-
 from __future__ import annotations
 
-import logging
 import platform
 
 from whichvlm.hardware.amd import detect_amd_gpus
@@ -14,11 +11,8 @@ from whichvlm.hardware.nvidia import detect_nvidia_gpus
 from whichvlm.hardware.types import BackendCapability, HardwareInfo, ensure_backend_capabilities
 from whichvlm.hardware.windows import detect_windows_gpus
 
-logger = logging.getLogger(__name__)
-
 
 def detect_hardware() -> HardwareInfo:
-    """Detect all hardware. Each detector is fail-safe (returns empty on error)."""
     os_name = platform.system().lower()
     if os_name not in ("linux", "darwin", "windows"):
         os_name = "linux"

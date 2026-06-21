@@ -33,7 +33,7 @@ def _run_system_profiler(data_type: str) -> dict | None:
         if result.returncode != 0:
             return None
         return json.loads(result.stdout)
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
         return None
 
 

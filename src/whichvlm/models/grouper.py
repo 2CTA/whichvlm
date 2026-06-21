@@ -16,7 +16,7 @@ def _normalize_name(model_id: str) -> str:
         return canonical
 
     name = model_id.lower()
-    # Strip org prefix (e.g. "bartowski/Meta-Llama-3.1" -> "meta-llama-3.1")
+    # Strip org prefix before comparing artifact names.
     if "/" in name:
         name = name.split("/", 1)[1]
     # Strip common org prefixes in model names (e.g. "qwen_qwen3-8b" -> "qwen3-8b")
@@ -106,19 +106,14 @@ def group_models(models: list[ModelInfo]) -> list[ModelFamily]:
             continue
 
         # Pick the base model. Priority order:
-        #   1. Models that are referenced by another group member's base_model
-        #      field — these are upstream of the others, so they are the
-        #      true base even when a downstream fine-tune (e.g.
-        #      prefeitura-rio/Rio-3.0-Open-Mini) has more downloads than the
-        #      official base (Qwen/Qwen3-4B-Thinking-2507).
-        #   2. Models without GGUF/quant suffixes and no base_model of their
-        #      own (the original checkpoint).
+        #   1. Models referenced by another group member's base_model field.
+        #   2. Models without GGUF/quant suffixes and no base_model of their own.
         #   3. Anything left in the group.
         # Within the chosen tier, pick highest downloads as a tiebreaker.
         referenced_as_base: set[str] = {m.base_model for m in group if m.base_model}
-        upstream_candidates = [m for m in group if m.id in referenced_as_base]
-        if upstream_candidates:
-            base_candidates = upstream_candidates
+        referenced_candidates = [m for m in group if m.id in referenced_as_base]
+        if referenced_candidates:
+            base_candidates = referenced_candidates
         else:
             base_candidates = [
                 m for m in group if not m.gguf_variants or m.base_model is None

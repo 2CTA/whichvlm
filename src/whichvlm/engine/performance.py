@@ -65,10 +65,8 @@ _BACKEND_FACTOR: dict[str, float] = {
 }
 
 # MoE decode is partly bandwidth-bound and partly kernel/dispatch-bound.
-# The old fixed 25% read floor matched high-bandwidth CUDA cards reasonably
-# well, but badly under-estimated low-bandwidth unified-memory APUs such as
-# Strix Halo where the active expert reads dominate. Model this as a floor
-# that rises with bandwidth: ~5% at 256 GB/s, capped at the legacy 25%.
+# Low-bandwidth unified-memory APUs spend more time reading active expert
+# weights, so the effective read floor rises with bandwidth.
 _MOE_REFERENCE_BANDWIDTH_GBPS = 256.0
 _MOE_MIN_READ_RATIO_AT_REFERENCE = 0.05
 _MOE_MAX_READ_RATIO_FLOOR = 0.25
@@ -255,9 +253,8 @@ def estimate_tok_per_sec(
 
     Model: throughput is bounded by the time it takes to read all weights
     needed per token, multiplied by quant- and backend-specific efficiency
-    factors. The default 0.5 efficiency factor used earlier mixed two
-    distinct losses (compute kernel quality and offload overhead) into one
-    constant — this version separates them so a Q4_K_M model on CUDA scores
+    factors. Quant kernel quality and offload overhead are modeled separately
+    so a Q4_K_M model on CUDA scores
     differently from the same model running on Metal or with partial
     offload.
     """
@@ -303,9 +300,7 @@ def estimate_tok_per_sec(
     #   shape for model weights, even though their backend factor remains AMD.
     #   "Exceeding VRAM" only means exceeding the recommended working set;
     #   the bytes are still read from the same high-bandwidth unified RAM,
-    #   so there is no PCIe cliff — only mild OS/cache contention. Using
-    #   the discrete 0.45x here was the bug that made DeepSeek-R1-class
-    #   models on M2/M3 Ultra report ~1.7 t/s when real-world is 4-15.
+    #   so there is no PCIe cliff — only mild OS/cache contention.
     if fit_type == "partial_offload":
         if gpu.vendor == "apple" or gpu.shared_memory:
             efficiency *= 0.85

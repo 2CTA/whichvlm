@@ -1,9 +1,8 @@
-"""Aider polyglot leaderboard source.
+"""Polyglot code-edit leaderboard source.
 
 The polyglot leaderboard ranks LLMs by how well they edit code across six
-languages (C++, Go, Java, JavaScript, Python, Rust). Aider publishes the raw
-data as a YAML file in its GitHub repo, which is easier to parse than the
-rendered HTML and rarely changes shape.
+languages (C++, Go, Java, JavaScript, Python, Rust). The raw YAML is easier to
+parse than rendered HTML and rarely changes shape.
 
 Used primarily for ``profile=coding`` ranking, but the score is also merged
 into the general benchmark dict so coding-strong models get a small bump
@@ -108,7 +107,7 @@ def _parse_yaml_lite(text: str) -> list[tuple[str, float]]:
 
 
 async def fetch_aider_polyglot_scores(client: httpx.AsyncClient) -> dict[str, float]:
-    """Fetch Aider polyglot pass-rates. Raises on HTTP / parse failure."""
+    """Fetch polyglot pass-rates. Raises on HTTP / parse failure."""
     scores: dict[str, float] = {}
     resp = await get_with_retries(client, AIDER_POLYGLOT_YML_URL)
     resp.raise_for_status()

@@ -4,8 +4,6 @@ Find local vision-language models that fit your machine.
 
 `whichvlm` detects GPU, CPU, RAM, Apple Metal/MLX readiness, model formats, quantized variants, GGUF projectors, and model lineage. It ranks VLM candidates for local inference instead of treating every Hugging Face repo as one plain text model.
 
- Shared infrastructure is adapted with attribution in `LICENSE`, `NOTICE`, and `UPSTREAM_NOTES.md`.
-
 ## Install
 
 Use Python 3.11 or newer.
@@ -16,17 +14,11 @@ uv sync
 uv run whichvlm --help
 ```
 
-For the shell environment used during local development on this machine:
+For editable development with test dependencies:
 
 ```bash
-source "$HOME/Documents/uv_global_venv/bin/activate"
-```
-
-For editable development without `uv run`:
-
-```bash
-uv pip install -e ".[dev]"
-whichvlm --help
+uv sync --group dev
+uv run pytest -q
 ```
 
 ## Use
@@ -127,33 +119,24 @@ The source layout is under `src/whichvlm`. Tests live under `tests`. Avoid impor
 
 ## Real Hardware Benchmarks
 
-These are opt-in. They are skipped unless explicitly enabled because they use real hardware, downloads, and runtime dependencies.
+These use real hardware, downloads, and runtime dependencies.
 
 Run the same detection benchmark on every target machine:
 
 ```bash
-WHICHVLM_REAL_HARDWARE_BENCHMARKS=1 \
-WHICHVLM_EXPECT_BACKEND=metal \
-uv run pytest -q tests/test_real_hardware_benchmarks.py::test_hardware_detection_benchmark
+uv run python benchmarks/real_hardware.py detection --expect-backend metal
 ```
 
 Run the same GGUF+mmproj VLM benchmark on every target machine:
 
 ```bash
-WHICHVLM_REAL_HARDWARE_BENCHMARKS=1 \
-WHICHVLM_GGUF_VLM_REPO="owner/model-gguf" \
-WHICHVLM_GGUF_VLM_MODEL_FILE="model-q4_k_m.gguf" \
-WHICHVLM_GGUF_VLM_MMPROJ_FILE="mmproj-model-f16.gguf" \
-WHICHVLM_GGUF_VLM_HANDLER="Llava16ChatHandler" \
-WHICHVLM_BENCH_IMAGE="./image.jpg" \
-uv run pytest -q tests/test_real_hardware_benchmarks.py::test_gguf_mmproj_vlm_generation_benchmark
+uv run python benchmarks/real_hardware.py gguf-mmproj \
+  --repo owner/model-gguf \
+  --model-file model-q4_k_m.gguf \
+  --mmproj-file mmproj-model-f16.gguf \
+  --handler Llava16ChatHandler \
+  --image ./image.jpg
 ```
-
-Useful thresholds:
-
-- `WHICHVLM_DETECT_MAX_SECONDS`, default `8`
-- `WHICHVLM_GGUF_MAX_LOAD_SECONDS`, default `180`
-- `WHICHVLM_GGUF_MIN_TOKENS_PER_SECOND`, default `0.2`
 
 ## Current Limits
 

@@ -132,9 +132,7 @@ def _synthesize_variants_for_official_repo(
     """Return synthetic GGUF variants for popular safetensors-only repos.
 
     HuggingFace doesn't always index GGUF siblings for an official model
-    (e.g. ``Qwen/Qwen3.6-27B`` ships only safetensors), but bartowski /
-    lmstudio-community / QuantFactory invariably publish Q4_K_M and Q8_0
-    conversions within a day of release. Without synthetic variants, we'd
+    (e.g. ``Qwen/Qwen3.6-27B`` ships only safetensors). Without synthetic variants, we'd
     score these models at BF16 file sizes (~2x larger than realistic), which
     forces a partial_offload penalty on otherwise-runnable mid-size models.
 
@@ -178,7 +176,7 @@ def _iter_candidate_variants(
     if not model.gguf_variants:
         synthetic = _synthesize_variants_for_official_repo(model, quant_filter_upper)
         if synthetic:
-            return list(synthetic)
+            return synthetic
         quant_type = effective_quant_type(model, None)
         if quant_filter_upper and quant_type != quant_filter_upper:
             return []
@@ -222,7 +220,7 @@ def _iter_candidate_variants(
 
     candidates = sorted(candidates, key=variant_sort_key)
 
-    return list(candidates)
+    return candidates
 
 
 _OFFICIAL_ORGS = frozenset(
@@ -249,29 +247,6 @@ _OFFICIAL_ORGS = frozenset(
         "allenai",
         "ibm-granite",
         "stepfun-ai",
-    }
-)
-
-# Trusted GGUF converters — format converters that don't change model quality
-_TRUSTED_CONVERTERS = frozenset(
-    {
-        "bartowski",
-        "lmstudio-community",
-        "QuantFactory",
-        "unsloth",
-        "ggml-org",
-        "Mungert",
-    }
-)
-
-# Known repackagers — typically reupload others' models without added value
-_REPACKAGER_ORGS = frozenset(
-    {
-        "MaziyarPanahi",
-        "TheBloke",
-        "SanctumAI",
-        "solidrust",
-        "mradermacher",
     }
 )
 
@@ -414,7 +389,6 @@ def _generation_bonus(model_id: str) -> float:
 
 
 def _detect_specializations(model: ModelInfo) -> set[str]:
-    """モデルIDから用途特化タグを検出する。"""
     lower = " ".join(
         [model.id, model.hf_pipeline_tag or "", *model.tags, model.architecture]
     ).lower()
@@ -433,7 +407,6 @@ def _detect_specializations(model: ModelInfo) -> set[str]:
 
 
 def _matches_profile(model: ModelInfo, task_profile: str) -> bool:
-    """指定プロファイルにモデルが合致するか判定する。"""
     profile = task_profile.lower()
     tags = _detect_specializations(model)
     if profile == "any":
@@ -457,15 +430,12 @@ def _knowledge_capacity_b(model: ModelInfo) -> float:
     parameters (all expert weights live in VRAM and contribute to the
     knowledge encoded in the model) is the right yardstick — ``min_params``
     is asking "how much does this model know?" not "how much does it
-    compute per token". Using *active* params here was the bug that hid
-    Qwen3-Next-80B-A3B from the H100 ranking — its 3B active was below the
-    12B auto-floor for 30GB+ GPUs even though its 80B total clearly fits.
+    compute per token".
     """
     return model.parameter_count / 1e9
 
 
 def _passes_evidence_filter(source: str, evidence_filter: str) -> bool:
-    """判定根拠フィルタに合致するかを返す。"""
     mode = evidence_filter.lower()
     if mode == "strict":
         return source == "direct"
@@ -475,13 +445,12 @@ def _passes_evidence_filter(source: str, evidence_filter: str) -> bool:
 
 
 def _is_gguf_only_backend(hardware: HardwareInfo) -> bool:
-    """実行基盤の都合でGGUFのみを許可すべきか判定する。"""
     if not hardware.gpus:
         return True
     if hardware.os == "darwin":
         return False
 
-    # Linux + NVIDIA (CUDA) は AWQ/GPTQ 含む非GGUFも許可する。
+    # Linux + NVIDIA CUDA can run AWQ/GPTQ and other non-GGUF formats.
     has_linux_nvidia = hardware.os == "linux" and any(
         g.vendor == "nvidia" for g in hardware.gpus
     )
@@ -601,7 +570,7 @@ def _compute_quality_score(
     - Fit type penalty (partial offload / CPU-only heavily penalized)
     - Speed bonus / penalty (practical usability)
     - Popularity (downloads/likes) as soft tie-breaker
-    - Official org bonus (vs known repackagers)
+    - Source lineage signal
     - Generation-lineage bonus (newest family member > legacy generation)
     """
     params_b = model.parameter_count / 1e9
@@ -699,15 +668,10 @@ def _compute_quality_score(
     org = model.id.split("/")[0] if "/" in model.id else ""
     if org in _OFFICIAL_ORGS:
         source_bonus_raw = 5.0
-    elif org in _REPACKAGER_ORGS:
-        source_bonus_raw = -5.0
     elif model.base_model:
         base_org = model.base_model.split("/")[0] if "/" in model.base_model else ""
         if base_org in _OFFICIAL_ORGS:
-            if org in _TRUSTED_CONVERTERS:
-                source_bonus_raw = 5.0
-            else:
-                source_bonus_raw = 0.0
+            source_bonus_raw = 2.5
 
     if is_direct:
         source_weight = 0.2
@@ -857,7 +821,7 @@ def rank_models(
         if not _passes_evidence_filter(bench_evidence.source, evidence_filter):
             continue
 
-        # 各variantを評価し、そのモデルで最もスコアが高いものを採用する
+        # Score all variants and keep the strongest runnable form for this model.
         best_for_model: CompatibilityResult | None = None
         for variant in candidates:
             if gguf_only_backend and variant is None and "mlx" not in model_backends:

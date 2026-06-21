@@ -8,8 +8,8 @@ import shlex
 import subprocess
 from pathlib import Path
 
-from whichvlm.constants import AMD_SHARED_MEMORY_APU_MARKERS, _GiB
-from whichvlm.hardware.gpu_db import _static_bandwidth, resolve_detected_bandwidth
+from whichvlm.constants import AMD_SHARED_MEMORY_APU_MARKERS, BYTES_PER_GIB
+from whichvlm.hardware.gpu_db import static_bandwidth, resolve_detected_bandwidth
 from whichvlm.hardware.types import GPUInfo
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ def _lookup_bandwidth(name: str) -> float | None:
     """Curated GPU_BANDWIDTH lookup, compound-lspci aware. Kept for regression
     tests; live detection goes through ``resolve_detected_bandwidth``, which
     also consults dbgpu."""
-    return _static_bandwidth(name)
+    return static_bandwidth(name)
 
 
 def _is_shared_memory_apu(name: str) -> bool:
@@ -34,7 +34,7 @@ def _is_shared_memory_apu(name: str) -> bool:
 
 
 def _normalize_apu_vram(name: str, vram_bytes: int) -> int:
-    if _is_shared_memory_apu(name) and vram_bytes < 2 * _GiB:
+    if _is_shared_memory_apu(name) and vram_bytes < 2 * BYTES_PER_GIB:
         return 0
     return vram_bytes
 
@@ -78,7 +78,7 @@ def _detect_from_lspci() -> list[str]:
             text=True,
             timeout=5,
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired):
         logger.debug("lspci not available or timed out")
         return []
 
@@ -221,7 +221,7 @@ def detect_amd_gpus() -> list[GPUInfo]:
         if result.returncode != 0:
             return _detect_amd_gpus_fallback()
         product_data = json.loads(result.stdout)
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
         logger.debug("rocm-smi not available or failed")
         return _detect_amd_gpus_fallback()
 
@@ -236,7 +236,7 @@ def detect_amd_gpus() -> list[GPUInfo]:
         if result.returncode != 0:
             return _detect_amd_gpus_fallback()
         mem_data = json.loads(result.stdout)
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
         logger.debug("Failed to get AMD VRAM info")
         return _detect_amd_gpus_fallback()
 
@@ -256,7 +256,7 @@ def detect_amd_gpus() -> list[GPUInfo]:
                 if isinstance(val, dict) and "Driver version" in val:
                     rocm_version = val["Driver version"]
                     break
-    except Exception:
+    except (subprocess.SubprocessError, OSError, json.JSONDecodeError):
         pass
 
     # Parse GPU info - rocm-smi JSON keys are like "card0", "card1"

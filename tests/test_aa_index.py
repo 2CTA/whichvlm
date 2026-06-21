@@ -16,13 +16,13 @@ import pytest
 
 from whichvlm.models.benchmark_sources.aa_index import (
     AA_LEADERBOARD_URL,
+    ExtractionFailed,
     _canonical_name,
     _decode_rsc_blob,
     _extract_aa_pairs_from_html,
     fetch_aa_index_scores,
     get_aa_curated_fallback,
 )
-from whichvlm.models.benchmark_sources.types import ExtractionFailed
 
 
 def _rsc_page(records: list[dict]) -> str:

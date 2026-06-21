@@ -9,8 +9,7 @@ from whichvlm.hardware.types import HardwareInfo
 from whichvlm.output import _console
 
 
-def _summarize_row(name: str, hw: HardwareInfo, results: list) -> dict:
-    """Reduce a (hardware, ranking) pair to one row for the upgrade table."""
+def summarize_upgrade_row(name: str, hw: HardwareInfo, results: list) -> dict:
     gpu_label = "CPU-only"
     vram_gb = 0.0
     if hw.gpus:
@@ -52,7 +51,6 @@ def _summarize_row(name: str, hw: HardwareInfo, results: list) -> dict:
 
 
 def _upgrade_verdict(delta_q: float, delta_speed: float) -> str:
-    """Return a short verdict for an upgrade row."""
     if delta_q >= 12 and delta_speed >= 10:
         return "[bold green]worth it[/]"
     if delta_q >= 8 or delta_speed >= 20:
@@ -69,9 +67,8 @@ def display_upgrade(
     current_results: list,
     target_results: list[tuple[str, HardwareInfo, list]],
 ) -> None:
-    """Render the GPU-upgrade comparison table."""
-    current_row = _summarize_row("Current", current_hw, current_results)
-    target_rows = [_summarize_row(name, hw, res) for name, hw, res in target_results]
+    current_row = summarize_upgrade_row("Current", current_hw, current_results)
+    target_rows = [summarize_upgrade_row(name, hw, res) for name, hw, res in target_results]
 
     table = Table(
         title="GPU upgrade comparison",

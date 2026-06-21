@@ -1,18 +1,17 @@
-"""Regression tests for the Phase 1-3 ranking-quality fixes.
+"""Ranking-quality regressions.
 
-Each test reproduces a specific bug class that the original whichvlm 0.5.0
-ranker exhibited on 2026-05-14:
+Each test locks down a failure mode that can make weak variants rank too high:
 
 - Q1_0 / Q2_0 derivatives must not surface as full GPU candidates by
-  default (P1: extreme-quant exclusion).
+  default.
 - Self-reported (hf_eval) values must not beat independent leaderboard
-  evidence (P3-1: self_reported tier).
+  evidence.
 - CI / research orgs (gpt2, opt-125m, tiny-Qwen2ForCausalLM) must never
-  occupy a ranking slot (P2-2: excluded orgs).
+  occupy a ranking slot.
 - Newer generation in the same family should beat the older one when
-  benchmark data is unavailable or weak (P2-1: lineage bonus).
+  benchmark data is unavailable or weak.
 - Heretic / abliterated / uncensored derivatives should rank below their
-  clean base/converter counterparts (P2-3: derivative penalty).
+  clean base/converter counterparts.
 """
 
 from __future__ import annotations
@@ -65,18 +64,15 @@ def _gguf(quant: str, size_gb: float) -> GGUFVariant:
     )
 
 
-# ---------------------------------------------------------------------- P1
-
-
 def test_p1_q1_0_only_repo_is_severely_penalized_when_no_quant_filter():
     """An 8B repo that only ships Q1_0 may still appear as a fallback (since
     it's the only thing the repo offers) but its quality score must be
     crushed by the combined Q1_0 (-55%) + self_reported (-45%) penalties so
     it cannot beat a normal Q4_K_M alternative."""
-    bonsai = ModelInfo(
-        id="prism-ml/Bonsai-8B-gguf",
-        family_id="bonsai-8b",
-        name="Bonsai-8B",
+    weak_quant = ModelInfo(
+        id="fixture-org/Weak-Quant-8B-GGUF",
+        family_id="weak-quant-8b",
+        name="Weak-Quant-8B",
         parameter_count=8_000_000_000,
         downloads=48_000,
         likes=0,
@@ -84,7 +80,7 @@ def test_p1_q1_0_only_repo_is_severely_penalized_when_no_quant_filter():
         benchmark_scores={"hf_eval": 88.0},
     )
     normal = ModelInfo(
-        id="bartowski/Qwen3-8B-GGUF",
+        id="community-quants/Qwen3-8B-GGUF",
         family_id="qwen3-8b",
         name="Qwen3-8B",
         parameter_count=8_000_000_000,
@@ -94,33 +90,41 @@ def test_p1_q1_0_only_repo_is_severely_penalized_when_no_quant_filter():
         gguf_variants=[_gguf("Q4_K_M", 4.7)],
     )
     results = rank_models(
-        [bonsai, normal],
+        [weak_quant, normal],
         _hw(),
         top_n=5,
         benchmark_scores={"Qwen/Qwen3-8B-Instruct": 65.0},
     )
     ids = [r.model.id for r in results]
-    assert "bartowski/Qwen3-8B-GGUF" in ids
+    assert "community-quants/Qwen3-8B-GGUF" in ids
     # The Q1_0 + self_reported combo must end up below the normal Q4_K_M.
-    sc_bonsai = next(
-        (r.quality_score for r in results if r.model.id == "prism-ml/Bonsai-8B-gguf"),
+    sc_weak_quant = next(
+        (
+            r.quality_score
+            for r in results
+            if r.model.id == "fixture-org/Weak-Quant-8B-GGUF"
+        ),
         0.0,
     )
     sc_normal = next(
-        (r.quality_score for r in results if r.model.id == "bartowski/Qwen3-8B-GGUF"),
+        (
+            r.quality_score
+            for r in results
+            if r.model.id == "community-quants/Qwen3-8B-GGUF"
+        ),
         0.0,
     )
-    assert sc_normal > sc_bonsai
-    # And the absolute Bonsai score must be in the "obviously broken" band.
-    assert sc_bonsai < 25
+    assert sc_normal > sc_weak_quant
+    # The weak quant should land in the "obviously broken" band.
+    assert sc_weak_quant < 25
 
 
 def test_p1_q1_0_returned_when_explicitly_requested_via_quant_filter():
     """Users can still ask for Q1_0 with --quant Q1_0 when they really mean it."""
     model = ModelInfo(
-        id="prism-ml/Bonsai-8B-gguf",
-        family_id="bonsai-8b",
-        name="Bonsai-8B",
+        id="fixture-org/Weak-Quant-8B-GGUF",
+        family_id="weak-quant-8b",
+        name="Weak-Quant-8B",
         parameter_count=8_000_000_000,
         downloads=48_000,
         likes=0,
@@ -136,7 +140,7 @@ def test_p1_q1_0_returned_when_explicitly_requested_via_quant_filter():
 
 def test_p1_q1_q2_quality_penalty_is_severe():
     """Sub-2-bit quants must carry 40-60% quality penalty, not the
-    legacy 5% fallback. We assert the constant directly to lock this in."""
+    old 5% fallback. We assert the constant directly to lock this in."""
     from whichvlm.constants import QUANT_QUALITY_PENALTY
 
     assert QUANT_QUALITY_PENALTY["Q1_0"] >= 0.50
@@ -145,9 +149,6 @@ def test_p1_q1_q2_quality_penalty_is_severe():
     assert QUANT_QUALITY_PENALTY["IQ1_S"] >= 0.50
     assert QUANT_QUALITY_PENALTY["IQ1_M"] >= 0.45
     assert QUANT_QUALITY_PENALTY["IQ2_M"] >= 0.25
-
-
-# ---------------------------------------------------------------------- P2-2
 
 
 def test_p2_excluded_orgs_never_rank():
@@ -176,7 +177,7 @@ def test_p2_excluded_orgs_never_rank():
     )
     # also a normal model so the result list is non-empty
     real = ModelInfo(
-        id="bartowski/gemma-3-12b-it-GGUF",
+        id="community-quants/gemma-3-12b-it-GGUF",
         family_id="gemma-3-12b",
         name="gemma-3-12b",
         parameter_count=12_200_000_000,
@@ -189,7 +190,7 @@ def test_p2_excluded_orgs_never_rank():
     assert "openai-community/gpt2" not in ids
     assert "facebook/opt-125m" not in ids
     assert "trl-internal-testing/tiny-Qwen2ForCausalLM-2.5" not in ids
-    assert "bartowski/gemma-3-12b-it-GGUF" in ids
+    assert "community-quants/gemma-3-12b-it-GGUF" in ids
 
 
 def test_p2_is_excluded_model_helper():
@@ -200,9 +201,6 @@ def test_p2_is_excluded_model_helper():
     assert _is_excluded_model("hmellor/tiny-random-LlamaForCausalLM")
     assert not _is_excluded_model("Qwen/Qwen3-8B")
     assert not _is_excluded_model("meta-llama/Llama-4-Maverick-17B-128E-Instruct")
-
-
-# ---------------------------------------------------------------------- P2-1
 
 
 def test_p2_generation_bonus_newer_wins_over_legacy_in_same_family():
@@ -257,31 +255,23 @@ def test_p2_unknown_family_gets_zero_bonus():
     assert _generation_bonus("random-org/random-model-7b") == 0.0
 
 
-# ---------------------------------------------------------------------- P2-3
-
-
 def test_p2_derivative_penalty_for_heretic_uncensored():
-    assert (
-        _derivative_name_penalty("diffusionmodels1254ani/gemma-3-12b-it-heretic-v2") < 0
-    )
+    assert _derivative_name_penalty("derivative-fixtures/gemma-3-12b-it-heretic-v2") < 0
     assert (
         _derivative_name_penalty(
-            "Youssofal/Qwen3.6-27B-Abliterated-Heretic-Uncensored-GGUF"
+            "derivative-fixtures/Qwen3.6-27B-Abliterated-Heretic-Uncensored-GGUF"
         )
         < 0
     )
-    assert _derivative_name_penalty("OBLITERATUS/gemma-4-E4B-it-OBLITERATED") < 0
-    assert _derivative_name_penalty("bartowski/Qwen3-32B-GGUF") == 0.0
-
-
-# ---------------------------------------------------------------------- P3-1
+    assert _derivative_name_penalty("derivative-fixtures/gemma-4-E4B-it-OBLITERATED") < 0
+    assert _derivative_name_penalty("community-quants/Qwen3-32B-GGUF") == 0.0
 
 
 def test_p3_self_reported_evidence_does_not_outrank_direct_leaderboard():
-    """A self-reported eval (e.g. prism-ml/Bonsai claiming 91) must NOT
+    """A self-reported eval claiming 91 must NOT
     outrank an independent-leaderboard hit on a comparable model."""
     self_reported = ModelInfo(
-        id="prism-ml/Self-Reported-8B",
+        id="fixture-org/Self-Reported-8B",
         family_id="self-reported-8b",
         name="Self-Reported",
         parameter_count=8_000_000_000,
@@ -349,8 +339,7 @@ def test_p3_source_weights_ordering():
 
 def test_p3_strict_evidence_filter_excludes_self_reported():
     """`--evidence strict` should keep only direct hits, dropping
-    self_reported (the exact bug that surfaced 5 prism-ml/squ11z1
-    models as 'direct') as well as inherited evidence."""
+    self_reported as well as inherited evidence."""
     self_reported = ModelInfo(
         id="some-org/Self-Reported-8B",
         family_id="sr-8b",
@@ -377,9 +366,6 @@ def test_p3_strict_evidence_filter_excludes_self_reported():
     )
     ids = [r.model.id for r in results]
     assert ids == ["trusted-org/Real-Bench-8B"]
-
-
-# -------------------- Rating-push regressions (Phase 2) --------------------
 
 
 def test_official_org_safetensors_gets_q4km_synthesis():

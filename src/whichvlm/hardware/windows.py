@@ -7,7 +7,7 @@ import logging
 import re
 import subprocess
 
-from whichvlm.constants import AMD_SHARED_MEMORY_APU_MARKERS, _GiB
+from whichvlm.constants import AMD_SHARED_MEMORY_APU_MARKERS, BYTES_PER_GIB
 from whichvlm.hardware.gpu_db import resolve_detected_bandwidth
 from whichvlm.hardware.types import GPUInfo
 
@@ -17,7 +17,7 @@ _WINDOWS_DISCRETE_VRAM_FLOORS: tuple[tuple[str, int], ...] = (
     # AMD sells RX 9060 XT in 8 GB and 16 GB variants. WMI AdapterRAM is a
     # uint32 and can report ~4 GB for larger cards, so keep a conservative
     # known floor instead of trusting the capped value.
-    ("RX 9060 XT", 8 * _GiB),
+    ("RX 9060 XT", 8 * BYTES_PER_GIB),
 )
 
 
@@ -72,7 +72,7 @@ def _is_intel_shared_memory_gpu(name: str, vram_bytes: int) -> bool:
         )
     ):
         return True
-    return vram_bytes < 2 * _GiB
+    return vram_bytes < 2 * BYTES_PER_GIB
 
 
 def _is_shared_memory_gpu(name: str, vendor: str, vram_bytes: int) -> bool:
@@ -135,7 +135,7 @@ def detect_windows_gpus() -> list[GPUInfo]:
             text=True,
             timeout=10,
         )
-    except (FileNotFoundError, subprocess.SubprocessError, OSError) as e:
+    except (subprocess.SubprocessError, OSError) as e:
         logger.debug(f"Windows GPU detection failed: {e}")
         return []
 
