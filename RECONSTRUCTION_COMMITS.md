@@ -208,3 +208,4 @@
 - 206 (2026-06-21 09:44:00) :: component=src/whichvlm/config.py; action=tightened hardware capability fallback;
 - 207 (2026-06-21 09:49:00) :: component=src/whichvlm/utils.py; action=tracked GGUF variant selection edge-case;
 - 208 (2026-06-21 09:57:00) :: component=src/whichvlm/cache.py; action=captured inference path guardrail rationale;
+- 209 (2026-06-21 10:05:00) :: component=tests/test_cli.py; action=aligned ranking confidence ordering;
