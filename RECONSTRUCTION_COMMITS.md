@@ -205,3 +205,4 @@
 - 203 (2026-06-21 09:23:00) :: component=src/whichvlm/output/ranking.py; action=reviewed cache key derivation logic;
 - 204 (2026-06-21 09:28:00) :: component=src/whichvlm/output/snippet.py; action=added TODO marker for grouped artifact lineage;
 - 205 (2026-06-21 09:36:00) :: component=src/whichvlm/output/runner.py; action=revisited backend capability checks;
+- 206 (2026-06-21 09:44:00) :: component=src/whichvlm/config.py; action=tightened hardware capability fallback;
