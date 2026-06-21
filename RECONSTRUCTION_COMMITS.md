@@ -200,3 +200,4 @@
 - 198 (2026-06-20 10:03:00) :: component=src/whichvlm/runtime/mlx.py; action=refined test intent for hardware variants;
 - 199 (2026-06-20 10:11:00) :: component=src/whichvlm/runtime/transformers.py; action=tracked API response de-duplication behavior;
 - 200 (2026-06-21 09:02:00) :: component=src/whichvlm/cli.py; action=noted portability concerns for json cache;
+- 201 (2026-06-21 09:07:00) :: component=src/whichvlm/cli_flags.py; action=documented benchmark evidence assumptions;
