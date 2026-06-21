@@ -4,7 +4,7 @@ Find local vision-language models that fit your machine.
 
 `whichvlm` detects GPU, CPU, RAM, Apple Metal/MLX readiness, model formats, quantized variants, GGUF projectors, and model lineage. It ranks VLM candidates for local inference instead of treating every Hugging Face repo as one plain text model.
 
-It is an MIT-licensed sibling of [`compatible multimodal source`](https://github.com/the whichvlm contributors/compatible multimodal source). Shared infrastructure is adapted with attribution in `LICENSE`, `NOTICE`, and `UPSTREAM_NOTES.md`.
+ Shared infrastructure is adapted with attribution in `LICENSE`, `NOTICE`, and `UPSTREAM_NOTES.md`.
 
 ## Install
 
