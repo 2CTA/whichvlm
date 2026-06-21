@@ -1,4 +1,4 @@
-"""Regression tests for ranking and hardware edge cases.
+"""Ranking and hardware edge-case regressions.
 
 These tests cover stress cases across Apple GPU simulation, family inheritance
 order, grouper base selection, and reasoning-model surfacing:
@@ -62,9 +62,6 @@ def _gguf(quant: str, size_gb: float) -> GGUFVariant:
     )
 
 
-# ------------------------------------------------------------------ R3-1
-
-
 class TestAppleSiliconSimulator:
     """``--gpu`` must recognize Apple Silicon instead of fuzzy-matching
     discrete-GPU database entries."""
@@ -108,9 +105,6 @@ class TestAppleSiliconSimulator:
         gpu = create_synthetic_gpu("M2 Ultra", vram_override_gb=128)
         assert gpu.memory_bandwidth_gbps == 800.0
         assert gpu.memory_bandwidth_gbps != 100.0
-
-
-# ------------------------------------------------------------------ R3-2
 
 
 class TestFamilySizeInheritance:
@@ -225,7 +219,7 @@ class TestGrouperReferencedBase:
             assert m.family_id == official.family_id
             assert "rio" not in m.family_id
 
-    def test_falls_back_to_downloads_without_upstream_reference(self):
+    def test_falls_back_to_downloads_without_base_reference(self):
         # No member references another's base_model → keep the prior
         # "most downloads, no GGUF" behaviour.
         a = ModelInfo(
@@ -245,9 +239,6 @@ class TestGrouperReferencedBase:
         families = group_models([a, b])
         assert len(families) == 1
         assert families[0].base_model.id == "orgB/Model-7B"
-
-
-# --------------------------------------------------------------- R3-4/5
 
 
 class TestReasoningSurface:
@@ -294,9 +285,6 @@ class TestReasoningSurface:
         qwq_res = next(r for r in ranked if r.model.id == "Qwen/QwQ-32B")
         assert qwq_res.benchmark_status == "direct"
         assert qwq_res.quality_score > 0
-
-
-# ----------------------------------------------------------------- R3-6
 
 
 class TestVisionGenerationOrder:
@@ -355,9 +343,6 @@ class TestVisionGenerationOrder:
             "legacy Qwen2-VL-7B outranked the current Qwen3-VL-32B on "
             f"the vision profile (got {ranked[0].model.id})"
         )
-
-
-# ----------------------------------------------------------------- R3-7
 
 
 class TestApplePartialOffloadPenalty:
@@ -444,9 +429,6 @@ class TestApplePartialOffloadPenalty:
             f"PCIe-bound partial offload at equal bandwidth ({a:.1f} vs "
             f"{n:.1f})"
         )
-
-
-# ----------------------------------------------------------------- R3-8
 
 
 class TestMoESpeedEstimation:

@@ -1,4 +1,4 @@
-"""Ranking-quality regressions.
+"""Ranking quality regressions.
 
 Each test locks down a failure mode that can make weak variants rank too high:
 
@@ -64,7 +64,7 @@ def _gguf(quant: str, size_gb: float) -> GGUFVariant:
     )
 
 
-def test_p1_q1_0_only_repo_is_severely_penalized_when_no_quant_filter():
+def test_q1_0_only_repo_is_severely_penalized_when_no_quant_filter():
     """An 8B repo that only ships Q1_0 may still appear as a fallback (since
     it's the only thing the repo offers) but its quality score must be
     crushed by the combined Q1_0 (-55%) + self_reported (-45%) penalties so
@@ -119,7 +119,7 @@ def test_p1_q1_0_only_repo_is_severely_penalized_when_no_quant_filter():
     assert sc_weak_quant < 25
 
 
-def test_p1_q1_0_returned_when_explicitly_requested_via_quant_filter():
+def test_q1_0_returned_when_explicitly_requested_via_quant_filter():
     """Users can still ask for Q1_0 with --quant Q1_0 when they really mean it."""
     model = ModelInfo(
         id="fixture-org/Weak-Quant-8B-GGUF",
@@ -138,7 +138,7 @@ def test_p1_q1_0_returned_when_explicitly_requested_via_quant_filter():
     assert results[0].gguf_variant.quant_type == "Q1_0"
 
 
-def test_p1_q1_q2_quality_penalty_is_severe():
+def test_q1_q2_quality_penalty_is_severe():
     """Sub-2-bit quants must carry 40-60% quality penalty, not the
     old 5% fallback. We assert the constant directly to lock this in."""
     from whichvlm.constants import QUANT_QUALITY_PENALTY
@@ -151,7 +151,7 @@ def test_p1_q1_q2_quality_penalty_is_severe():
     assert QUANT_QUALITY_PENALTY["IQ2_M"] >= 0.25
 
 
-def test_p2_excluded_orgs_never_rank():
+def test_excluded_orgs_never_rank():
     """gpt2 / opt-125m / TRL fixtures must be skipped regardless of DL."""
     gpt2 = ModelInfo(
         id="openai-community/gpt2",
@@ -193,7 +193,7 @@ def test_p2_excluded_orgs_never_rank():
     assert "community-quants/gemma-3-12b-it-GGUF" in ids
 
 
-def test_p2_is_excluded_model_helper():
+def test_is_excluded_model_helper():
     assert _is_excluded_model("openai-community/gpt2")
     assert _is_excluded_model("facebook/opt-125m")
     assert _is_excluded_model("EleutherAI/pythia-70m-deduped")
@@ -203,7 +203,7 @@ def test_p2_is_excluded_model_helper():
     assert not _is_excluded_model("meta-llama/Llama-4-Maverick-17B-128E-Instruct")
 
 
-def test_p2_generation_bonus_newer_wins_over_legacy_in_same_family():
+def test_generation_bonus_newer_wins_over_legacy_in_same_family():
     new = _generation_bonus("Qwen/Qwen3.6-27B")
     mid = _generation_bonus("Qwen/Qwen3-8B")
     old = _generation_bonus("Qwen/Qwen2.5-7B-Instruct")
@@ -211,7 +211,7 @@ def test_p2_generation_bonus_newer_wins_over_legacy_in_same_family():
     assert new > mid > old > ancient
 
 
-def test_p2_generation_bonus_covers_vlm_families():
+def test_generation_bonus_covers_vlm_families():
     assert _generation_bonus("Qwen/Qwen3-VL-8B-Instruct") > _generation_bonus(
         "Qwen/Qwen2.5-VL-7B-Instruct"
     )
@@ -223,7 +223,7 @@ def test_p2_generation_bonus_covers_vlm_families():
     )
 
 
-def test_p2_lineage_covers_llama_deepseek_gemma_phi():
+def test_lineage_covers_llama_deepseek_gemma_phi():
     assert _generation_bonus("meta-llama/Llama-4-Scout") > _generation_bonus(
         "meta-llama/Llama-3.1-8B-Instruct"
     )
@@ -238,7 +238,7 @@ def test_p2_lineage_covers_llama_deepseek_gemma_phi():
     )
 
 
-def test_p2_lineage_covers_t5_variants_without_gemma_collision():
+def test_lineage_covers_t5_variants_without_gemma_collision():
     assert _generation_bonus("google/t5gemma-4b") > _generation_bonus(
         "google/flan-t5-xl"
     )
@@ -251,11 +251,11 @@ def test_p2_lineage_covers_t5_variants_without_gemma_collision():
     assert _generation_bonus("openai/gpt5-test") == 0.0
 
 
-def test_p2_unknown_family_gets_zero_bonus():
+def test_unknown_family_gets_zero_bonus():
     assert _generation_bonus("random-org/random-model-7b") == 0.0
 
 
-def test_p2_derivative_penalty_for_heretic_uncensored():
+def test_derivative_penalty_for_heretic_uncensored():
     assert _derivative_name_penalty("derivative-fixtures/gemma-3-12b-it-heretic-v2") < 0
     assert (
         _derivative_name_penalty(
@@ -267,7 +267,7 @@ def test_p2_derivative_penalty_for_heretic_uncensored():
     assert _derivative_name_penalty("community-quants/Qwen3-32B-GGUF") == 0.0
 
 
-def test_p3_self_reported_evidence_does_not_outrank_direct_leaderboard():
+def test_self_reported_evidence_does_not_outrank_direct_leaderboard():
     """A self-reported eval claiming 91 must NOT
     outrank an independent-leaderboard hit on a comparable model."""
     self_reported = ModelInfo(
@@ -301,7 +301,7 @@ def test_p3_self_reported_evidence_does_not_outrank_direct_leaderboard():
     assert results[1].benchmark_status == "self_reported"
 
 
-def test_p3_self_reported_outranks_only_when_there_is_nothing_else():
+def test_self_reported_outranks_only_when_there_is_nothing_else():
     """When no other evidence exists, self_reported should still produce a
     score so the candidate isn't filtered out — just at a lower weight."""
     only_self_reported = ModelInfo(
@@ -326,7 +326,7 @@ def test_p3_self_reported_outranks_only_when_there_is_nothing_else():
     assert 0 < results[0].quality_score < 60
 
 
-def test_p3_source_weights_ordering():
+def test_source_weights_ordering():
     """Direct must weight the most, self_reported the least among
     benchmark-producing sources."""
     assert _SOURCE_WEIGHTS["direct"] > _SOURCE_WEIGHTS["base_model"]
@@ -337,7 +337,7 @@ def test_p3_source_weights_ordering():
     assert _SOURCE_WEIGHTS["none"] == 0.0
 
 
-def test_p3_strict_evidence_filter_excludes_self_reported():
+def test_strict_evidence_filter_excludes_self_reported():
     """`--evidence strict` should keep only direct hits, dropping
     self_reported as well as inherited evidence."""
     self_reported = ModelInfo(
