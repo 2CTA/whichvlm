@@ -202,3 +202,4 @@
 - 200 (2026-06-21 09:02:00) :: component=src/whichvlm/cli.py; action=noted portability concerns for json cache;
 - 201 (2026-06-21 09:07:00) :: component=src/whichvlm/cli_flags.py; action=documented benchmark evidence assumptions;
 - 202 (2026-06-21 09:15:00) :: component=src/whichvlm/cli_output.py; action=noted quantization boundary handling;
+- 203 (2026-06-21 09:23:00) :: component=src/whichvlm/output/ranking.py; action=reviewed cache key derivation logic;
