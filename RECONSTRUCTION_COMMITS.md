@@ -204,3 +204,4 @@
 - 202 (2026-06-21 09:15:00) :: component=src/whichvlm/cli_output.py; action=noted quantization boundary handling;
 - 203 (2026-06-21 09:23:00) :: component=src/whichvlm/output/ranking.py; action=reviewed cache key derivation logic;
 - 204 (2026-06-21 09:28:00) :: component=src/whichvlm/output/snippet.py; action=added TODO marker for grouped artifact lineage;
+- 205 (2026-06-21 09:36:00) :: component=src/whichvlm/output/runner.py; action=revisited backend capability checks;
