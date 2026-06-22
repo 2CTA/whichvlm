@@ -1,0 +1,92 @@
+- name: bug
+  color: "#d73a4a"
+  description: Something isn't working
+
+- name: duplicate
+  color: "#cfd3d7"
+  description: This issue or pull request already exists
+
+- name: feature request
+  color: "#a2eeef"
+  description: New feature or request
+  from_name: enhancement
+
+- name: good first issue
+  color: "#7057ff"
+  description: Good for newcomers
+
+- name: help wanted
+  color: "#008672"
+  description: Extra attention is needed
+
+- name: question
+  color: "#d876e3"
+  description: Further information is requested
+
+- name: cpu
+  color: "#db7cce"
+  description: Related to CPU backends
+
+- name: apple-silicon
+  color: "#a2aaad"
+  description: Related to Apple Silicon, Metal, or MLX
+
+- name: dependencies
+  color: "#0366d6"
+  description: Pull requests that update a dependency file
+
+- name: installation
+  color: "#d48723"
+  description: Installation problems
+
+- name: intel-gpu
+  color: "#d4c5f9"
+  description: Related to Intel GPU
+
+- name: multi-modality
+  color: "#285d9c"
+  description: Related to multi-modality
+
+- name: needs reproduction
+  color: "#496dc2"
+  description: Needs a reproducible example
+
+- name: needs-tests
+  color: "#c2d391"
+  description: Tests needed for this PR
+
+- name: new-model
+  color: "#815d32"
+  description: Requests to add new models
+
+- name: amd
+  color: "#ed1c24"
+  description: Related to AMD GPUs
+
+- name: nvidia
+  color: "#76b900"
+  description: Related to NVIDIA GPUs
+
+- name: performance
+  color: "#3ddd26"
+  description: Performance-related issues
+
+- name: benchmarks
+  color: "#5319e7"
+  description: Related to benchmark sources or benchmark scoring
+
+- name: model-ranking
+  color: "#006b75"
+  description: Related to model ranking or recommendation quality
+
+- name: runtime
+  color: "#fbca04"
+  description: Related to running models locally
+
+- name: output
+  color: "#bfd4f2"
+  description: Related to CLI, JSON, or Markdown output
+
+- name: usage
+  color: "#fef2c0"
+  description: How to use whichvlm
