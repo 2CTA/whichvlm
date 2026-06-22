@@ -1,0 +1,116 @@
+- name: bug
+  color: "#d73a4a"
+  description: Something isn't working
+
+- name: documentation
+  color: "#0075ca"
+  description: Improvements or additions to documentation
+
+- name: duplicate
+  color: "#cfd3d7"
+  description: This issue or pull request already exists
+
+- name: feature request
+  color: "#a2eeef"
+  description: New feature or request
+  from_name: enhancement
+
+- name: good first issue
+  color: "#7057ff"
+  description: Good for newcomers
+
+- name: help wanted
+  color: "#008672"
+  description: Extra attention is needed
+
+- name: invalid
+  color: "#e4e669"
+  description: This doesn't seem right
+
+- name: question
+  color: "#d876e3"
+  description: Further information is requested
+
+- name: wontfix
+  color: "#ffffff"
+  description: This will not be worked on
+
+- name: ci-failure
+  color: "#b60205"
+  description: Issue about an unexpected test failure in CI
+
+- name: cpu
+  color: "#db7cce"
+  description: Related to CPU backends
+
+- name: deepseek
+  color: "#1995fe"
+  description: Related to DeepSeek models
+
+- name: dependencies
+  color: "#0366d6"
+  description: Pull requests that update a dependency file
+
+- name: github_actions
+  color: "#000000"
+  description: Pull requests that update GitHub Actions code
+
+- name: gpt-oss
+  color: "#10a37f"
+  description: Related to GPT-OSS models
+
+- name: installation
+  color: "#d48723"
+  description: Installation problems
+
+- name: intel-gpu
+  color: "#d4c5f9"
+  description: Related to Intel GPU
+
+- name: llama
+  color: "#0055cc"
+  description: Related to Llama models
+
+- name: mistral
+  color: "#f43f09"
+  description: Related to Mistral models
+
+- name: multi-modality
+  color: "#285d9c"
+  description: Related to multi-modality
+
+- name: needs reproduction
+  color: "#496dc2"
+  description: Needs a reproducible example
+
+- name: needs-tests
+  color: "#c2d391"
+  description: Tests needed for this PR
+
+- name: new-model
+  color: "#815d32"
+  description: Requests to add new models
+
+- name: nvidia
+  color: "#76b900"
+  description: Related to NVIDIA GPUs
+
+- name: performance
+  color: "#3ddd26"
+  description: Performance-related issues
+
+- name: quantization
+  color: "#62bfab"
+  description: Related to quantized model formats
+
+- name: qwen
+  color: "#dbb0fe"
+  description: Related to Qwen models
+
+- name: rocm
+  color: "#b60205"
+  description: Related to AMD ROCm
+
+- name: usage
+  color: "#fef2c0"
+  description: How to use whichvlm
