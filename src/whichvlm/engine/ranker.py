@@ -235,6 +235,11 @@ EXCLUDED_ORGS = frozenset(
     }
 )
 
+BENCHMARK_ASSET_ORGS = frozenset(
+    {
+        "Civitai",
+    }
+)
 
 EXCLUDED_NAME_PATTERNS = (
     "tiny-",
@@ -281,6 +286,7 @@ DUBIOUS_DERIVATIVE_PATTERNS = (
     "fimbulvetr",
     "wizard-vicuna",
     "kunoichi",
+    "crack",
 )
 
 
@@ -588,7 +594,9 @@ def compute_quality_score(
 
     source_bonus_raw = 0.0
     org = model.id.split("/")[0] if "/" in model.id else ""
-    if org in OFFICIAL_ORGS:
+    if org in BENCHMARK_ASSET_ORGS:
+        source_bonus_raw = -5.0
+    elif org in OFFICIAL_ORGS:
         source_bonus_raw = 5.0
     elif model.base_model:
         base_org = model.base_model.split("/")[0] if "/" in model.base_model else ""

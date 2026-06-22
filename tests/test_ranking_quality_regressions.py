@@ -244,7 +244,37 @@ def test_derivative_penalty_for_heretic_uncensored():
         < 0
     )
     assert derivative_name_penalty("derivative-fixtures/gemma-4-E4B-it-OBLITERATED") < 0
+    assert derivative_name_penalty("dealignai/Qwen3.5-VL-9B-JANG_4S-CRACK") < 0
     assert derivative_name_penalty("community-quants/Qwen3-32B-GGUF") == 0.0
+
+
+def test_civitai_benchmark_repo_ranks_below_provider_backed_converter():
+    converter = ModelInfo(
+        id="community-quants/Qwen3-8B-Instruct-GGUF",
+        family_id="qwen3-8b",
+        name="Qwen3-8B-Instruct-GGUF",
+        parameter_count=8_000_000_000,
+        downloads=100,
+        base_model="Qwen/Qwen3-8B-Instruct",
+        gguf_variants=[gguf("Q4_K_M", 4.5)],
+    )
+    benchmark_repo = ModelInfo(
+        id="Civitai/Qwen3-8B-Bench-FP8",
+        family_id="qwen3-8b",
+        name="Qwen3-8B-Bench-FP8",
+        parameter_count=8_000_000_000,
+        downloads=200,
+        base_model="Qwen/Qwen3-8B-Instruct",
+        gguf_variants=[gguf("Q4_K_M", 4.5)],
+    )
+
+    results = rank_models(
+        [benchmark_repo, converter],
+        hw(),
+        top_n=1,
+        benchmark_scores={"Qwen/Qwen3-8B-Instruct": 70.0},
+    )
+    assert results[0].model.id == "community-quants/Qwen3-8B-Instruct-GGUF"
 
 
 def test_self_reported_evidence_does_not_outrank_direct_leaderboard():
