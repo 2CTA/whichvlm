@@ -9,7 +9,7 @@ from whichvlm.runtime import (
 )
 
 
-def _vlm_model(**kwargs) -> ModelInfo:
+def vlm_model(**kwargs) -> ModelInfo:
     return ModelInfo(
         id="org/Test-VL-7B",
         family_id="test-vl",
@@ -21,7 +21,7 @@ def _vlm_model(**kwargs) -> ModelInfo:
 
 
 def test_vlm_runtime_requires_image():
-    model = _vlm_model()
+    model = vlm_model()
 
     assert requires_image(model)
     with pytest.raises(RuntimeUnsupportedError, match="--image"):
@@ -29,7 +29,7 @@ def test_vlm_runtime_requires_image():
 
 
 def test_transformers_vlm_script_uses_processor_and_image_path():
-    model = _vlm_model()
+    model = vlm_model()
 
     deps, script_type = resolve_model_deps(model, None)
     script = generate_run_script(model, None, 4096, False, image_path="/tmp/image.png")
@@ -43,7 +43,7 @@ def test_transformers_vlm_script_uses_processor_and_image_path():
 
 
 def test_gguf_vlm_runtime_requires_projector_artifact():
-    model = _vlm_model(
+    model = vlm_model(
         gguf_variants=[
             GGUFVariant(
                 filename="test-q4.gguf",
@@ -65,7 +65,7 @@ def test_gguf_vlm_runtime_requires_projector_artifact():
 
 
 def test_gguf_vlm_script_uses_llama_cpp_projector_artifact():
-    model = _vlm_model(
+    model = vlm_model(
         gguf_variants=[
             GGUFVariant(
                 filename="test-q4.gguf",
@@ -108,7 +108,7 @@ def test_gguf_vlm_script_uses_llama_cpp_projector_artifact():
 
 
 def test_mlx_vlm_script_uses_mlx_vlm_runner():
-    model = _vlm_model(
+    model = vlm_model(
         model_format="mlx",
         artifacts=[
             ModelArtifact(

@@ -1,5 +1,3 @@
-"""Tests for Windows GPU detection."""
-
 from __future__ import annotations
 
 import json

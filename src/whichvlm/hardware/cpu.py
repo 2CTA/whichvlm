@@ -9,7 +9,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def _cpu_name_from_lscpu() -> str | None:
+def cpu_name_from_lscpu() -> str | None:
     try:
         result = subprocess.run(["lscpu"], capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
@@ -23,13 +23,13 @@ def _cpu_name_from_lscpu() -> str | None:
     return None
 
 
-def _cpu_name_from_devicetree() -> str | None:
+def cpu_name_from_devicetree() -> str | None:
     try:
         raw = Path("/sys/firmware/devicetree/base/model").read_bytes()
         model = raw.decode("utf-8", errors="replace").strip().rstrip("\x00")
         if not model:
             return None
-        # "Apple MacBook Air (M2, 2022)" → "Apple M2"
+
         m = re.search(r"\b(M\d+(?:\s+(?:Pro|Max|Ultra))?)\b", model)
         if m:
             return f"Apple {m.group(1)}"
@@ -38,7 +38,7 @@ def _cpu_name_from_devicetree() -> str | None:
         return None
 
 
-def _clean_cpu_name(name: str | None) -> str | None:
+def clean_cpu_name(name: str | None) -> str | None:
     if name is None:
         return None
     cleaned = name.strip()
@@ -47,7 +47,7 @@ def _clean_cpu_name(name: str | None) -> str | None:
     return cleaned
 
 
-def _cpu_name_from_wmic() -> str | None:
+def cpu_name_from_wmic() -> str | None:
     try:
         result = subprocess.run(
             ["wmic", "cpu", "get", "name"],
@@ -62,13 +62,13 @@ def _cpu_name_from_wmic() -> str | None:
         return None
 
     for line in result.stdout.splitlines():
-        name = _clean_cpu_name(line)
+        name = clean_cpu_name(line)
         if name:
             return name
     return None
 
 
-def _cpu_name_from_windows_cim() -> str | None:
+def cpu_name_from_windows_cim() -> str | None:
     script = (
         "Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name"
     )
@@ -87,7 +87,7 @@ def _cpu_name_from_windows_cim() -> str | None:
             continue
 
         for line in result.stdout.splitlines():
-            name = _clean_cpu_name(line)
+            name = clean_cpu_name(line)
             if name:
                 return name
     return None
@@ -103,7 +103,7 @@ def detect_cpu_name() -> str:
                         return line.split(":", 1)[1].strip()
         except OSError as e:
             logger.debug(f"Failed to read /proc/cpuinfo: {e}")
-        name = _cpu_name_from_lscpu() or _cpu_name_from_devicetree()
+        name = cpu_name_from_lscpu() or cpu_name_from_devicetree()
         if name:
             return name
     elif system == "Darwin":
@@ -118,17 +118,17 @@ def detect_cpu_name() -> str:
             logger.debug(f"Failed to run sysctl for CPU name: {e}")
         else:
             if result.returncode == 0:
-                name = _clean_cpu_name(result.stdout)
+                name = clean_cpu_name(result.stdout)
                 if name:
                     return name
     elif system == "Windows":
-        name = _cpu_name_from_wmic() or _cpu_name_from_windows_cim()
+        name = cpu_name_from_wmic() or cpu_name_from_windows_cim()
         if name:
             return name
     return "Unknown CPU"
 
 
-def _count_physical_cores_linux() -> int | None:
+def count_physical_cores_linux() -> int | None:
     try:
         physical_ids: set[tuple[str, str]] = set()
         current_physical = ""
@@ -154,16 +154,16 @@ def detect_cpu_cores() -> int:
     if cores:
         return cores
 
-    # Fallback for WSL2 where psutil may return None for physical cores
+
     if platform.system() == "Linux":
-        linux_cores = _count_physical_cores_linux()
+        linux_cores = count_physical_cores_linux()
         if linux_cores:
             return linux_cores
 
     return psutil.cpu_count(logical=True) or 1
 
 
-def _detect_avx_linux() -> tuple[bool, bool]:
+def detect_avx_linux() -> tuple[bool, bool]:
     has_avx2 = False
     has_avx512 = False
     try:
@@ -181,7 +181,7 @@ def _detect_avx_linux() -> tuple[bool, bool]:
     return has_avx2, has_avx512
 
 
-def _detect_avx_darwin() -> tuple[bool, bool]:
+def detect_avx_darwin() -> tuple[bool, bool]:
     has_avx2 = False
     has_avx512 = False
     try:
@@ -210,8 +210,8 @@ def _detect_avx_darwin() -> tuple[bool, bool]:
 def detect_avx_support() -> tuple[bool, bool]:
     system = platform.system()
     if system == "Linux":
-        return _detect_avx_linux()
+        return detect_avx_linux()
     elif system == "Darwin":
-        return _detect_avx_darwin()
-    # Windows / fallback: assume AVX2 on modern CPUs
+        return detect_avx_darwin()
+
     return True, False

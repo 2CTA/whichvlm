@@ -1,5 +1,3 @@
-"""Tests for AMD GPU detection fallbacks."""
-
 from __future__ import annotations
 
 import subprocess
@@ -73,8 +71,7 @@ def test_detect_strix_halo_rocm_smi_does_not_treat_aperture_as_vram(monkeypatch)
 
 
 def test_detect_amd_gpu_ignores_intel_only_lspci(monkeypatch):
-    """Regression: an Intel VGA row must not be reported as AMD just
-    because 'Intel Corporation' contains the substring 'ati'."""
+
     output = (
         '00:02.0 "VGA compatible controller" "Intel Corporation" '
         '"Alder Lake-P GT1 [UHD Graphics]" -r0c -p00 '
@@ -87,8 +84,8 @@ def test_detect_amd_gpu_ignores_intel_only_lspci(monkeypatch):
         return subprocess.CompletedProcess(args, 0, stdout=output, stderr="")
 
     monkeypatch.setattr(amd.subprocess, "run", fake_run)
-    # Isolate the lspci path: don't let a real sysfs probe leak in.
-    monkeypatch.setattr(amd, "_detect_from_sysfs", lambda: [])
+
+    monkeypatch.setattr(amd, "detect_from_sysfs", lambda: [])
 
     assert amd.detect_amd_gpus() == []
 
@@ -100,11 +97,11 @@ def test_detect_amd_gpu_from_sysfs_when_lspci_missing(monkeypatch, tmp_path):
     (card / "product_name").write_text("AMD Radeon RX 9060 XT\n")
     (card / "mem_info_vram_total").write_text(str(16 * 1024**3))
 
-    monkeypatch.setattr(amd, "_detect_from_lspci", lambda: [])
-    original_sysfs = amd._detect_from_sysfs
-    monkeypatch.setattr(amd, "_detect_from_sysfs", lambda: original_sysfs(tmp_path))
+    monkeypatch.setattr(amd, "detect_from_lspci", lambda: [])
+    original_sysfs = amd.detect_from_sysfs
+    monkeypatch.setattr(amd, "detect_from_sysfs", lambda: original_sysfs(tmp_path))
 
-    gpus = amd._detect_amd_gpus_fallback()
+    gpus = amd.detect_amd_gpus_fallback()
 
     assert len(gpus) == 1
     assert gpus[0].vendor == "amd"
@@ -114,7 +111,7 @@ def test_detect_amd_gpu_from_sysfs_when_lspci_missing(monkeypatch, tmp_path):
 
 
 def test_display_amd_shared_memory_without_zero_kb(monkeypatch):
-    from whichvlm.output import _console as console_mod
+    from whichvlm.output import console as console_mod
     from whichvlm.output import display as display_mod
 
     buf = StringIO()
@@ -144,27 +141,23 @@ def test_display_amd_shared_memory_without_zero_kb(monkeypatch):
     assert "0 KB" not in output
 
 
-# ---------- RX 6750 XT detection ----------
-
-
 def test_sysfs_generic_name_enriched_by_lspci(monkeypatch, tmp_path):
-    """When sysfs gives 'AMD Graphics' and lspci gives a descriptive name,
-    the fallback should use the lspci name with sysfs VRAM."""
+
     BYTES_PER_GIB = 1024**3
 
-    # sysfs: generic name but has VRAM
+
     card = tmp_path / "card0" / "device"
     card.mkdir(parents=True)
     (card / "vendor").write_text("0x1002\n")
     (card / "mem_info_vram_total").write_text(str(12 * BYTES_PER_GIB))
-    # no product_name → falls back to "AMD Graphics"
+
 
     lspci_name = "Navi 22 [Radeon RX 6700/6700 XT/6750 XT / 6800M/6850M XT]"
-    original_sysfs = amd._detect_from_sysfs
-    monkeypatch.setattr(amd, "_detect_from_sysfs", lambda: original_sysfs(tmp_path))
-    monkeypatch.setattr(amd, "_detect_from_lspci", lambda: [lspci_name])
+    original_sysfs = amd.detect_from_sysfs
+    monkeypatch.setattr(amd, "detect_from_sysfs", lambda: original_sysfs(tmp_path))
+    monkeypatch.setattr(amd, "detect_from_lspci", lambda: [lspci_name])
 
-    gpus = amd._detect_amd_gpus_fallback()
+    gpus = amd.detect_amd_gpus_fallback()
 
     assert len(gpus) == 1
     assert gpus[0].name == lspci_name
@@ -173,8 +166,7 @@ def test_sysfs_generic_name_enriched_by_lspci(monkeypatch, tmp_path):
 
 
 def test_sysfs_product_name_preferred_over_lspci(monkeypatch, tmp_path):
-    """When sysfs gives a real product name, it should be used even if
-    lspci is also available."""
+
     BYTES_PER_GIB = 1024**3
 
     card = tmp_path / "card0" / "device"
@@ -183,15 +175,15 @@ def test_sysfs_product_name_preferred_over_lspci(monkeypatch, tmp_path):
     (card / "product_name").write_text("AMD Radeon RX 6750 XT\n")
     (card / "mem_info_vram_total").write_text(str(12 * BYTES_PER_GIB))
 
-    original_sysfs = amd._detect_from_sysfs
-    monkeypatch.setattr(amd, "_detect_from_sysfs", lambda: original_sysfs(tmp_path))
+    original_sysfs = amd.detect_from_sysfs
+    monkeypatch.setattr(amd, "detect_from_sysfs", lambda: original_sysfs(tmp_path))
     monkeypatch.setattr(
         amd,
-        "_detect_from_lspci",
+        "detect_from_lspci",
         lambda: ["Navi 22 [Radeon RX 6700/6700 XT/6750 XT / 6800M/6850M XT]"],
     )
 
-    gpus = amd._detect_amd_gpus_fallback()
+    gpus = amd.detect_amd_gpus_fallback()
 
     assert len(gpus) == 1
     assert gpus[0].name == "AMD Radeon RX 6750 XT"
@@ -202,22 +194,19 @@ def test_sysfs_product_name_preferred_over_lspci(monkeypatch, tmp_path):
 def test_lspci_enriched_with_sysfs_vram_when_sysfs_detection_fails(
     monkeypatch, tmp_path
 ):
-    """When _detect_from_sysfs returns nothing but _read_sysfs_amd_vram
-    succeeds, lspci names should still get VRAM data."""
+
     BYTES_PER_GIB = 1024**3
 
-    # _detect_from_sysfs returns nothing (e.g. product_name absent AND
-    # the card dir structure confuses the glob), but individual VRAM reads
-    # via _read_sysfs_amd_vram still work.
-    monkeypatch.setattr(amd, "_detect_from_sysfs", lambda: [])
+
+    monkeypatch.setattr(amd, "detect_from_sysfs", lambda: [])
     monkeypatch.setattr(
         amd,
-        "_detect_from_lspci",
+        "detect_from_lspci",
         lambda: ["Navi 22 [Radeon RX 6700/6700 XT/6750 XT / 6800M/6850M XT]"],
     )
-    monkeypatch.setattr(amd, "_read_sysfs_amd_vram", lambda: [12 * BYTES_PER_GIB])
+    monkeypatch.setattr(amd, "read_sysfs_amd_vram", lambda: [12 * BYTES_PER_GIB])
 
-    gpus = amd._detect_amd_gpus_fallback()
+    gpus = amd.detect_amd_gpus_fallback()
 
     assert len(gpus) == 1
     assert gpus[0].vram_bytes == 12 * BYTES_PER_GIB
@@ -225,22 +214,21 @@ def test_lspci_enriched_with_sysfs_vram_when_sysfs_detection_fails(
 
 
 def test_lookup_bandwidth_compound_lspci_name():
-    """The bandwidth lookup should resolve compound lspci names by
-    splitting on '/' and re-applying the 'RX ' prefix."""
-    # Direct substring match works for clean names
-    assert amd._lookup_bandwidth("AMD Radeon RX 6750 XT") == 432.0
-    assert amd._lookup_bandwidth("AMD Radeon RX 6700 XT") == 384.0
 
-    # Compound lspci name — first matching segment wins
+
+    assert amd.lookup_bandwidth("AMD Radeon RX 6750 XT") == 432.0
+    assert amd.lookup_bandwidth("AMD Radeon RX 6700 XT") == 384.0
+
+
     compound = "Navi 22 [Radeon RX 6700/6700 XT/6750 XT / 6800M/6850M XT]"
-    bw = amd._lookup_bandwidth(compound)
+    bw = amd.lookup_bandwidth(compound)
     assert bw is not None
     assert bw > 0
 
 
 def test_display_amd_dgpu_does_not_say_shared_memory(monkeypatch):
-    """A discrete AMD GPU with VRAM must NOT display 'shared memory'."""
-    from whichvlm.output import _console as console_mod
+
+    from whichvlm.output import console as console_mod
     from whichvlm.output import display as display_mod
 
     buf = StringIO()
@@ -272,9 +260,7 @@ def test_display_amd_dgpu_does_not_say_shared_memory(monkeypatch):
 
 
 def test_display_amd_dgpu_zero_vram_does_not_say_shared_memory(monkeypatch):
-    """An AMD dGPU with undetected VRAM should NOT be labelled
-    'shared memory' — that would be a false positive."""
-    from whichvlm.output import _console as console_mod
+    from whichvlm.output import console as console_mod
     from whichvlm.output import display as display_mod
 
     buf = StringIO()

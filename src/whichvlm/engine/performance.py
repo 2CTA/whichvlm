@@ -1,5 +1,3 @@
-"""Token generation speed estimation."""
-
 from __future__ import annotations
 
 from whichvlm.engine.quantization import estimate_weight_bytes
@@ -7,12 +5,9 @@ from whichvlm.engine.quantization import effective_quant_type
 from whichvlm.hardware.types import GPUInfo
 from whichvlm.models.types import GGUFVariant, ModelInfo
 
+# Speed model. Uses bandwidth, quant, and fit as the main signals.
 
-# Per-quant efficiency factors applied to the theoretical bandwidth-bound
-# tok/s. In practice, lower-precision GGUF paths usually achieve the highest
-# fraction of memory-bandwidth-limited throughput, while higher-precision
-# formats lose ground because they increase compute per byte.
-_QUANT_EFFICIENCY: dict[str, float] = {
+QUANT_EFFICIENCY: dict[str, float] = {
     "F32": 0.30,
     "F16": 0.40,
     "BF16": 0.40,
@@ -24,9 +19,8 @@ _QUANT_EFFICIENCY: dict[str, float] = {
     "Q4_K_M": 0.55,
     "Q4_K_S": 0.55,
     "Q4_0": 0.53,
-    # 4-bit microscaling floats decode through native FP4 tensor-core paths
-    # (e.g. Blackwell) where weight reads dominate, so they land in the same
-    # high-efficiency band as the best 4-bit GGUF kernels.
+
+
     "NVFP4": 0.56,
     "MXFP4": 0.55,
     "Q3_K_M": 0.50,
@@ -50,54 +44,49 @@ _QUANT_EFFICIENCY: dict[str, float] = {
     "TQ1_0": 0.32,
 }
 
-_DEFAULT_QUANT_EFFICIENCY = 0.45
+DEFAULT_QUANT_EFFICIENCY = 0.45
 
-# Vendor / backend multiplier applied on top of quant efficiency. CUDA on
-# modern data-center GPUs is the reference (1.0); Apple's Metal kernel is
-# behind on dequantization; ROCm trails further; older CUDA generations
-# also drop.
-_BACKEND_FACTOR: dict[str, float] = {
+
+BACKEND_FACTOR: dict[str, float] = {
     "nvidia": 1.00,
     "amd": 0.78,
     "apple": 0.82,
     "intel": 0.65,
 }
 
-# MoE decode is partly bandwidth-bound and partly kernel/dispatch-bound.
-# Low-bandwidth unified-memory APUs spend more time reading active expert
-# weights, so the effective read floor rises with bandwidth.
-_MOE_REFERENCE_BANDWIDTH_GBPS = 256.0
-_MOE_MIN_READ_RATIO_AT_REFERENCE = 0.05
-_MOE_MAX_READ_RATIO_FLOOR = 0.25
 
-_SPEED_CONFIDENCE_RANGE_FACTORS: dict[str, tuple[float, float]] = {
+MOE_REFERENCE_BANDWIDTH_GBPS = 256.0
+MOE_MIN_READ_RATIO_AT_REFERENCE = 0.05
+MOE_MAX_READ_RATIO_FLOOR = 0.25
+
+SPEED_CONFIDENCE_RANGE_FACTORS: dict[str, tuple[float, float]] = {
     "high": (0.85, 1.20),
     "medium": (0.60, 1.60),
     "low": (0.35, 2.00),
 }
 
-_SPEED_CONFIDENCE_ORDER = {
+SPEED_CONFIDENCE_ORDER = {
     "low": 0,
     "medium": 1,
     "high": 2,
 }
 
 
-def _backend_factor(gpu: GPUInfo) -> float:
-    if gpu.vendor in _BACKEND_FACTOR:
-        return _BACKEND_FACTOR[gpu.vendor]
+def backend_factor(gpu: GPUInfo) -> float:
+    if gpu.vendor in BACKEND_FACTOR:
+        return BACKEND_FACTOR[gpu.vendor]
     return 0.7
 
 
-def _quant_efficiency(model: ModelInfo, variant: GGUFVariant | None) -> float:
+def quant_efficiency(model: ModelInfo, variant: GGUFVariant | None) -> float:
     quant = effective_quant_type(model, variant)
     if not quant:
-        return _DEFAULT_QUANT_EFFICIENCY
-    return _QUANT_EFFICIENCY.get(quant.upper(), _DEFAULT_QUANT_EFFICIENCY)
+        return DEFAULT_QUANT_EFFICIENCY
+    return QUANT_EFFICIENCY.get(quant.upper(), DEFAULT_QUANT_EFFICIENCY)
 
 
-def _moe_effective_read_ratio(model: ModelInfo, gpu: GPUInfo) -> float:
-    """Return fraction of stored weights read per generated token for MoE."""
+def moe_effective_read_ratio(model: ModelInfo, gpu: GPUInfo) -> float:
+    # MoE read model. Shrinks stored params down to active token reads.
     if not model.is_moe or not model.parameter_count_active:
         return 1.0
     if model.parameter_count <= 0:
@@ -109,23 +98,23 @@ def _moe_effective_read_ratio(model: ModelInfo, gpu: GPUInfo) -> float:
 
     bandwidth = gpu.memory_bandwidth_gbps or 0.0
     if bandwidth > 0:
-        floor = _MOE_MIN_READ_RATIO_AT_REFERENCE * max(
-            1.0, bandwidth / _MOE_REFERENCE_BANDWIDTH_GBPS
+        floor = MOE_MIN_READ_RATIO_AT_REFERENCE * max(
+            1.0, bandwidth / MOE_REFERENCE_BANDWIDTH_GBPS
         )
     else:
-        floor = _MOE_MAX_READ_RATIO_FLOOR
-    floor = min(_MOE_MAX_READ_RATIO_FLOOR, floor)
+        floor = MOE_MAX_READ_RATIO_FLOOR
+    floor = min(MOE_MAX_READ_RATIO_FLOOR, floor)
 
     return min(1.0, max(active_ratio, floor))
 
 
-def _lower_speed_confidence(current: str, candidate: str) -> str:
-    if _SPEED_CONFIDENCE_ORDER[candidate] < _SPEED_CONFIDENCE_ORDER[current]:
+def lower_speed_confidence(current: str, candidate: str) -> str:
+    if SPEED_CONFIDENCE_ORDER[candidate] < SPEED_CONFIDENCE_ORDER[current]:
         return candidate
     return current
 
 
-def _looks_synthetic_gguf(model: ModelInfo, variant: GGUFVariant | None) -> bool:
+def looks_synthetic_gguf(model: ModelInfo, variant: GGUFVariant | None) -> bool:
     if variant is None:
         return False
     if not variant.filename:
@@ -134,7 +123,7 @@ def _looks_synthetic_gguf(model: ModelInfo, variant: GGUFVariant | None) -> bool
     return variant.filename == expected
 
 
-def _is_vlm_model(model: ModelInfo) -> bool:
+def is_vlm_model(model: ModelInfo) -> bool:
     if model.hf_pipeline_tag in {
         "image-text-to-text",
         "visual-question-answering",
@@ -147,8 +136,8 @@ def _is_vlm_model(model: ModelInfo) -> bool:
     )
 
 
-def _vlm_decode_factor(model: ModelInfo, gpu: GPUInfo | None, fit_type: str) -> float:
-    if not _is_vlm_model(model):
+def vlm_decode_factor(model: ModelInfo, gpu: GPUInfo | None, fit_type: str) -> float:
+    if not is_vlm_model(model):
         return 1.0
     factor = 0.78
     if fit_type == "partial_offload":
@@ -165,13 +154,7 @@ def estimate_speed_uncertainty(
     fit_type: str,
     estimated_tok_per_sec: float | None,
 ) -> tuple[str, tuple[float, float] | None, list[str]]:
-    """Return confidence metadata for the speed point estimate.
-
-    The tok/s estimator is intentionally hardware/model-metadata based; it
-    does not know the user's exact runtime or kernel versions. This helper
-    keeps that uncertainty visible without mixing it into the ranking score
-    itself.
-    """
+    # Confidence layer. Explains how shaky the speed point estimate is.
     notes = [
         "Speed is estimated from memory bandwidth, quantization, backend, and fit type."
     ]
@@ -212,29 +195,29 @@ def estimate_speed_uncertainty(
                 "MoE speed uses active parameters plus a bandwidth-scaled dispatch/read floor."
             )
             if gpu.vendor == "apple":
-                confidence = _lower_speed_confidence(confidence, "low")
+                confidence = lower_speed_confidence(confidence, "low")
                 notes.append(
                     "Apple Silicon MoE throughput is especially sensitive to Metal/MLX runtime kernels."
                 )
             elif gpu.vendor == "amd" and gpu.shared_memory:
-                confidence = _lower_speed_confidence(confidence, "medium")
+                confidence = lower_speed_confidence(confidence, "medium")
                 notes.append(
                     "AMD shared-memory APU estimates are calibrated by bandwidth, but ROCm/Vulkan kernels can differ."
                 )
 
-    if _looks_synthetic_gguf(model, variant):
-        confidence = _lower_speed_confidence(confidence, "medium")
+    if looks_synthetic_gguf(model, variant):
+        confidence = lower_speed_confidence(confidence, "medium")
         notes.append(
             "This is a synthetic GGUF estimate for an official repo, not a measured GGUF file."
         )
 
-    if _is_vlm_model(model):
-        confidence = _lower_speed_confidence(confidence, "medium")
+    if is_vlm_model(model):
+        confidence = lower_speed_confidence(confidence, "medium")
         notes.append(
             "VLM speed includes a conservative discount for image prefill and projector overhead."
         )
 
-    low_factor, high_factor = _SPEED_CONFIDENCE_RANGE_FACTORS[confidence]
+    low_factor, high_factor = SPEED_CONFIDENCE_RANGE_FACTORS[confidence]
     speed_range = (
         round(estimated_tok_per_sec * low_factor, 1),
         round(estimated_tok_per_sec * high_factor, 1),
@@ -248,35 +231,24 @@ def estimate_tok_per_sec(
     gpu: GPUInfo | None,
     fit_type: str = "full_gpu",
 ) -> float:
-    """Estimate tokens per second for inference.
-
-    Model: throughput is bounded by the time it takes to read all weights
-    needed per token, multiplied by quant- and backend-specific efficiency
-    factors. Quant kernel quality and offload overhead are modeled separately
-    so a Q4_K_M model on CUDA scores
-    differently from the same model running on Metal or with partial
-    offload.
-    """
+    # Main speed pass. Estimates decode rate for one model and backend.
     if gpu is None or fit_type == "cpu_only":
         params_b = model.parameter_count / 1e9
         if model.is_moe and model.parameter_count_active:
             params_b = model.parameter_count_active / 1e9
         if params_b <= 0:
             return 0.0
-        # Modern desktop CPUs sustain roughly 4-8 GB/s effective for the
-        # bandwidth-bound dequant+matmul loop on a single socket. Quantized
-        # 4-bit 7B → ~3.5 GB → ~1-2 tok/s. Approximate with an inverse-size
-        # heuristic that gets the right order of magnitude.
-        quant_factor = _quant_efficiency(model, variant) / _DEFAULT_QUANT_EFFICIENCY
+
+
+        quant_factor = quant_efficiency(model, variant) / DEFAULT_QUANT_EFFICIENCY
         text_speed = max(0.3, 18.0 / max(params_b, 0.5) * quant_factor)
-        return text_speed * _vlm_decode_factor(model, gpu, fit_type)
+        return text_speed * vlm_decode_factor(model, gpu, fit_type)
 
     model_size = estimate_weight_bytes(model, variant)
 
-    # MoE: use a speed-specific effective read ratio. VRAM fit still uses
-    # total stored weights elsewhere; this only estimates per-token reads.
+
     if model.is_moe and model.parameter_count_active:
-        effective_read = model_size * _moe_effective_read_ratio(model, gpu)
+        effective_read = model_size * moe_effective_read_ratio(model, gpu)
     else:
         effective_read = model_size
 
@@ -286,24 +258,14 @@ def estimate_tok_per_sec(
 
     theoretical = bandwidth / effective_read
 
-    # Real-world efficiency depends on quant kernel and backend.
-    efficiency = _quant_efficiency(model, variant) * _backend_factor(gpu)
 
-    # Partial offload penalty depends on the memory architecture:
-    #
-    # - Discrete GPU (NVIDIA/AMD/Intel): spilled weights live in CPU RAM
-    #   and are read across PCIe at ~1/10th of VRAM bandwidth. With ~40%
-    #   of the model offloaded the blended throughput lands near 0.45x.
-    # - Apple Silicon: GPU and CPU share one physical unified-memory pool.
-    #   AMD shared-memory APUs such as Strix Halo have the same no-PCIe-cliff
-    #   shape for model weights, even though their backend factor remains AMD.
-    #   "Exceeding VRAM" only means exceeding the recommended working set;
-    #   the bytes are still read from the same high-bandwidth unified RAM,
-    #   so there is no PCIe cliff — only mild OS/cache contention.
+    efficiency = quant_efficiency(model, variant) * backend_factor(gpu)
+
+
     if fit_type == "partial_offload":
         if gpu.vendor == "apple" or gpu.shared_memory:
             efficiency *= 0.85
         else:
             efficiency *= 0.45
 
-    return theoretical * efficiency * _vlm_decode_factor(model, gpu, fit_type)
+    return theoretical * efficiency * vlm_decode_factor(model, gpu, fit_type)

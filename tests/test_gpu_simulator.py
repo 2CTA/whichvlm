@@ -1,5 +1,3 @@
-"""Tests for GPU simulator (--gpu flag) using dbgpu database."""
-
 import pytest
 
 from whichvlm.constants import BYTES_PER_GIB
@@ -58,7 +56,7 @@ class TestKnownGPULookup:
     def test_nvidia_rtx_3060(self):
         gpu = create_synthetic_gpu("RTX 3060")
         assert "RTX 3060" in gpu.name
-        assert "Ti" not in gpu.name  # Should NOT match RTX 3060 Ti
+        assert "Ti" not in gpu.name
         assert gpu.vendor == "nvidia"
         assert gpu.compute_capability is not None
 
@@ -157,7 +155,7 @@ class TestUnknownGPU:
 
 class TestFuzzySearch:
     def test_partial_name(self):
-        """dbgpu fuzzy search should find GPU from partial name."""
+
         gpu = create_synthetic_gpu("GTX 1080")
         assert "1080" in gpu.name
         assert gpu.vendor == "nvidia"

@@ -1,9 +1,3 @@
-"""Curated seed data for VLM family grouping.
-
-This is deliberately small. It gives the fetcher/grouper stable family anchors
-without making ranking claims or trying to solve the full model inventory.
-"""
-
 from __future__ import annotations
 
 from typing import Final

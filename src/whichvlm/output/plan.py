@@ -1,5 +1,3 @@
-"""Plan-command Rich output."""
-
 from __future__ import annotations
 
 from rich.panel import Panel
@@ -15,7 +13,7 @@ from whichvlm.engine.performance import estimate_tok_per_sec
 from whichvlm.engine.vram import estimate_vram
 from whichvlm.hardware.types import GPUInfo
 from whichvlm.models.types import GGUFVariant, ModelInfo
-from whichvlm.output import _console
+from whichvlm.output import console
 from whichvlm.output.formatting import format_bytes, format_params
 
 PLAN_GPUS: tuple[tuple[str, int], ...] = (
@@ -129,7 +127,7 @@ def display_plan(
     if model.license:
         lines.append(f"[bold cyan]License:[/] {model.license}")
     panel = Panel("\n".join(lines), title="[bold]Model Info[/]", border_style="cyan")
-    _console.console.print(panel)
+    console.console.print(panel)
 
     vram_table = Table(
         title=f"VRAM Required (context: {context_length})", show_lines=True
@@ -152,7 +150,7 @@ def display_plan(
             f"{qt}{marker}", format_bytes(vram_bytes), penalty_str, style=style
         )
 
-    _console.console.print(vram_table)
+    console.console.print(vram_table)
 
     gpu_table = Table(
         title=f"GPU Compatibility ({target_quant}, {format_bytes(target_vram)} required)",
@@ -181,15 +179,15 @@ def display_plan(
 
         gpu_table.add_row(gpu_name, f"{vram_gb} GB", fit, speed_str)
 
-    _console.console.print(gpu_table)
+    console.console.print(gpu_table)
 
     if min_full_gpu:
-        _console.console.print(
+        console.console.print(
             f"  [green]★[/] Minimum GPU for full offload: "
             f"[bold]{min_full_gpu[0]}[/] ({min_full_gpu[1]} GB) at {target_quant}"
         )
     else:
-        _console.console.print(
+        console.console.print(
             f"  [yellow]Note:[/] No single GPU can fully load this model at {target_quant}. "
             "Consider a lower quantization or multi-GPU setup."
         )

@@ -13,16 +13,13 @@ LEADERBOARD_PARQUET_URL = (
 LEADERBOARD_ROWS_URL = "https://datasets-server.huggingface.co/rows"
 LEADERBOARD_DATASET = "open-llm-leaderboard/contents"
 
-# --- Leaderboard normalization ---
-# Legacy archive averages range ~5 to ~52. Capping at this value prevents older
-# high-score historical entries from dominating newer releases now covered by
-# recency-updated sources.
-_LB_AVG_MAX = 52
-_ARCHIVE_SOURCE_MAX_NORMALIZED = 78.0
+
+LB_AVG_MAX = 52
+ARCHIVE_SOURCE_MAX_NORMALIZED = 78.0
 
 
-async def _fetch_leaderboard_parquet(client: httpx.AsyncClient) -> dict[str, float]:
-    """Download legacy parquet snapshot (requires pyarrow)."""
+async def fetch_leaderboard_parquet(client: httpx.AsyncClient) -> dict[str, float]:
+
     import pyarrow.parquet as pq
 
     resp = await get_with_retries(
@@ -39,12 +36,12 @@ async def _fetch_leaderboard_parquet(client: httpx.AsyncClient) -> dict[str, flo
         name = d["fullname"][i]
         avg = d["Average ⬆️"][i]
         if name and avg and avg > 0:
-            scores[name] = _normalize_leaderboard_avg(avg)
+            scores[name] = normalize_leaderboard_avg(avg)
     return scores
 
 
-async def _fetch_leaderboard_api(client: httpx.AsyncClient) -> dict[str, float]:
-    """Fetch legacy rows via API (no pyarrow needed)."""
+async def fetch_leaderboard_api(client: httpx.AsyncClient) -> dict[str, float]:
+
     scores: dict[str, float] = {}
     offset = 0
 
@@ -71,7 +68,7 @@ async def _fetch_leaderboard_api(client: httpx.AsyncClient) -> dict[str, float]:
             name = row.get("fullname")
             avg = row.get("Average ⬆️")
             if name and avg and avg > 0:
-                scores[name] = _normalize_leaderboard_avg(avg)
+                scores[name] = normalize_leaderboard_avg(avg)
 
         offset += len(rows)
         total = data.get("num_rows_total", 0)
@@ -81,18 +78,17 @@ async def _fetch_leaderboard_api(client: httpx.AsyncClient) -> dict[str, float]:
     return scores
 
 
-def _normalize_leaderboard_avg(avg: float) -> float:
-    """Normalize legacy-archive average to 0-archive-source scale."""
-    score = avg / _LB_AVG_MAX * _ARCHIVE_SOURCE_MAX_NORMALIZED
-    return max(0.0, min(_ARCHIVE_SOURCE_MAX_NORMALIZED, round(score, 1)))
+def normalize_leaderboard_avg(avg: float) -> float:
+
+    score = avg / LB_AVG_MAX * ARCHIVE_SOURCE_MAX_NORMALIZED
+    return max(0.0, min(ARCHIVE_SOURCE_MAX_NORMALIZED, round(score, 1)))
 
 
 async def fetch_leaderboard_with_fallback(
     client: httpx.AsyncClient,
 ) -> dict[str, float]:
-    """Prefer the parquet path (one request, full table) and fall back to the
-    paginated rows API when pyarrow is unavailable."""
+
     try:
-        return await _fetch_leaderboard_parquet(client)
+        return await fetch_leaderboard_parquet(client)
     except ImportError:
-        return await _fetch_leaderboard_api(client)
+        return await fetch_leaderboard_api(client)

@@ -1,12 +1,10 @@
-"""Upgrade-command Rich output."""
-
 from __future__ import annotations
 
 from rich.table import Table
 
 from whichvlm.engine.quantization import effective_quant_type
 from whichvlm.hardware.types import HardwareInfo
-from whichvlm.output import _console
+from whichvlm.output import console
 
 
 def summarize_upgrade_row(name: str, hw: HardwareInfo, results: list) -> dict:
@@ -50,7 +48,7 @@ def summarize_upgrade_row(name: str, hw: HardwareInfo, results: list) -> dict:
     }
 
 
-def _upgrade_verdict(delta_q: float, delta_speed: float) -> str:
+def upgrade_verdict(delta_q: float, delta_speed: float) -> str:
     if delta_q >= 12 and delta_speed >= 10:
         return "[bold green]worth it[/]"
     if delta_q >= 8 or delta_speed >= 20:
@@ -113,11 +111,11 @@ def display_upgrade(
             f"{row['top_tok_s']:.0f}",
             f"{dq:+.1f}",
             f"{ds:+.0f}",
-            _upgrade_verdict(dq, ds),
+            upgrade_verdict(dq, ds),
         )
 
-    _console.console.print(table)
-    _console.console.print(
+    console.console.print(table)
+    console.console.print(
         "[dim]Verdict: worth it (≥12pt Q & ≥10 tok/s lift) · meaningful (≥8pt Q or "
         "≥20 tok/s) · marginal · flat (no change) · downgrade.[/]"
     )

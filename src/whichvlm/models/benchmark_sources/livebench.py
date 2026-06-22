@@ -1,15 +1,8 @@
-"""Periodic multimodal-oriented score source from a vendored CSV snapshot.
-
-The data file is exported from an external benchmark page and then converted
-into this in-repo snapshot for deterministic ranking behavior.
-"""
-
 from __future__ import annotations
 
-# snapshot raw data. Values are raw 0-100; the
-# normalizer below rescales them onto the project's shared 0-100 axis.
+
 LIVEBENCH_RAW_DATA: dict[str, float] = {
-    # --- 2026-01-08 CSV
+
     "MiniMaxAI/MiniMax-M2.5": 60.3,
     "MiniMaxAI/MiniMax-M2.7": 65.0,
     "Qwen/Qwen3-235B-A22B-Instruct-2507": 48.0,
@@ -37,7 +30,7 @@ LIVEBENCH_RAW_DATA: dict[str, float] = {
     "zai-org/GLM-4.7": 57.3,
     "zai-org/GLM-5": 68.7,
     "zai-org/GLM-5.1": 70.6,
-    # --- 2026-04 carryover (anchors for older / smaller-class models)
+
     "deepseek-ai/DeepSeek-R1-0528": 71.0,
     "deepseek-ai/DeepSeek-R1": 65.0,
     "deepseek-ai/DeepSeek-V3-0324": 57.0,
@@ -59,7 +52,7 @@ LIVEBENCH_RAW_DATA: dict[str, float] = {
     "openai/gpt-oss-20b": 52.0,
     "zai-org/GLM-4.5": 58.0,
     "zai-org/GLM-4.5-Air": 52.0,
-    # 8B-class entries to anchor the smaller-model scoring
+
     "Qwen/Qwen3-8B": 50.0,
     "Qwen/Qwen3-14B": 56.0,
     "Qwen/Qwen3-4B-Instruct-2507": 45.0,
@@ -76,22 +69,20 @@ LIVEBENCH_RAW_DATA: dict[str, float] = {
     "mistralai/Mistral-Small-3.1-24B-Instruct-2503": 48.0,
 }
 
-# The snapshot tops out near 72 for current frontier models and around 35 for
-# 8B-class models. It is anchored by a two-point fit so small models can remain
-# competitive while frontier entries stay separated from legacy archive.
-_LB_MIN = 18.0
-_LB_MAX = 75.0
+
+LB_MIN = 18.0
+LB_MAX = 75.0
 
 
-def _normalize_livebench(score: float) -> float:
-    normalized = (score - _LB_MIN) / (_LB_MAX - _LB_MIN) * 100.0
+def normalize_livebench(score: float) -> float:
+    normalized = (score - LB_MIN) / (LB_MAX - LB_MIN) * 100.0
     return max(0.0, min(100.0, round(normalized, 1)))
 
 
 def get_livebench_data() -> dict[str, float]:
-    """Return the vendored snapshot, normalized to the 0-100 scale."""
+
     return {
-        hf_id: _normalize_livebench(raw)
+        hf_id: normalize_livebench(raw)
         for hf_id, raw in LIVEBENCH_RAW_DATA.items()
-        if _normalize_livebench(raw) > 0
+        if normalize_livebench(raw) > 0
     }

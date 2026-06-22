@@ -6,14 +6,14 @@ from dataclasses import dataclass, field
 @dataclass
 class GGUFVariant:
     filename: str
-    quant_type: str  # "Q4_K_M", "Q8_0" etc
+    quant_type: str
     file_size_bytes: int
 
 
 @dataclass
 class ModelArtifact:
     repo_id: str
-    format: str  # safetensors | gguf | mlx | awq | gptq | bnb | fp8 | adapter | other
+    format: str
     quantization: str | None = None
     file_size_bytes: int | None = None
     access: str = "unknown"
@@ -24,7 +24,7 @@ class ModelArtifact:
 
 @dataclass
 class ModelComponent:
-    role: str  # language | vision_encoder | projector | processor | merged_checkpoint | adapter
+    role: str
     repo_id: str
     parameter_count: int | None = None
     quantization: str | None = None
@@ -41,12 +41,12 @@ class ModelLineage:
 
 @dataclass
 class ModelInfo:
-    id: str  # HF repo ID
-    family_id: str  # grouping key
+    id: str
+    family_id: str
     name: str
-    parameter_count: int  # total parameters
-    parameter_count_active: int | None = None  # MoE active params
-    architecture: str = ""  # "llama", "qwen2", "mixtral" etc
+    parameter_count: int
+    parameter_count_active: int | None = None
+    architecture: str = ""
     is_moe: bool = False
     context_length: int | None = None
     license: str | None = None
@@ -55,13 +55,13 @@ class ModelInfo:
     likes: int = 0
     gguf_variants: list[GGUFVariant] = field(default_factory=list)
     benchmark_scores: dict[str, float] = field(default_factory=dict)
-    base_model: str | None = None  # cardData.base_model
+    base_model: str | None = None
     hf_pipeline_tag: str | None = None
     tags: list[str] = field(default_factory=list)
-    access: str = "unknown"  # "gated", "ungated", or "unknown"
+    access: str = "unknown"
     is_official: bool = False
-    model_format: str = "unknown"  # "safetensors", "gguf", "mlx", "quantized"
-    variant_kind: str = "base"  # "official", "community_quantization", etc.
+    model_format: str = "unknown"
+    variant_kind: str = "base"
     quantization_type: str | None = None
     variant_of: str | None = None
     base_models: list[str] = field(default_factory=list)

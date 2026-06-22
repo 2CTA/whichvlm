@@ -1,5 +1,3 @@
-"""Compatibility checking: can a model run on given hardware?"""
-
 from __future__ import annotations
 
 from whichvlm.constants import BYTES_PER_GIB
@@ -13,14 +11,16 @@ from whichvlm.hardware.memory import effective_usable_ram
 from whichvlm.hardware.types import GPUInfo, HardwareInfo
 from whichvlm.models.types import GGUFVariant, ModelInfo
 
-_MULTI_GPU_FRAMEWORK_OVERHEAD_BYTES = int(0.3 * BYTES_PER_GIB)
-_MULTI_GPU_HOMOGENEOUS_UTILIZATION = 0.95
-_MULTI_GPU_HETEROGENEOUS_UTILIZATION = 0.90
+# Fit layer. Turns memory pools into full, partial, or cpu-only results.
+MULTI_GPU_FRAMEWORK_OVERHEAD_BYTES = int(0.3 * BYTES_PER_GIB)
+MULTI_GPU_HOMOGENEOUS_UTILIZATION = 0.95
+MULTI_GPU_HETEROGENEOUS_UTILIZATION = 0.90
 
 
-def _gpu_available_memory(
+def gpu_available_memory(
     gpu: GPUInfo, usable_ram: int, *, ram_budget_active: bool = False
 ) -> int:
+    # Pool calculator. Resolves the bytes this GPU can really use.
     vram_bytes = (
         gpu.usable_vram_bytes if gpu.usable_vram_bytes is not None else gpu.vram_bytes
     )
@@ -31,58 +31,53 @@ def _gpu_available_memory(
     return vram_bytes
 
 
-def _uses_shared_system_pool(gpu: GPUInfo) -> bool:
+def uses_shared_system_pool(gpu: GPUInfo) -> bool:
     return gpu.shared_memory and gpu.vram_bytes < 2 * BYTES_PER_GIB
 
 
-def _is_vulkan_only_gpu(gpu: GPUInfo) -> bool:
-    """Return True for legacy NVIDIA GPUs with no modern CUDA support.
+def is_vulkan_only_gpu(gpu: GPUInfo) -> bool:
 
-    Kepler cards (compute capability 3.x) were dropped by CUDA 12 and current
-    llama.cpp CUDA builds, so they only run through the Vulkan backend. Matches
-    ``VULKAN_ONLY_GPUS`` entries as case-insensitive substrings of the GPU name,
-    the same convention used by the bandwidth/compute-capability lookups.
-    """
     if gpu.vendor != "nvidia":
         return False
     name_upper = gpu.name.upper()
     return any(marker.upper() in name_upper for marker in VULKAN_ONLY_GPUS)
 
 
-def _fit_candidate_gpus(gpus: list[GPUInfo]) -> list[GPUInfo]:
+def fit_candidate_gpus(gpus: list[GPUInfo]) -> list[GPUInfo]:
     has_dedicated_gpu = any(
-        not _uses_shared_system_pool(gpu) and gpu.vram_bytes > 0 for gpu in gpus
+        not uses_shared_system_pool(gpu) and gpu.vram_bytes > 0 for gpu in gpus
     )
     if not has_dedicated_gpu:
         return gpus
-    return [gpu for gpu in gpus if not _uses_shared_system_pool(gpu)]
+    return [gpu for gpu in gpus if not uses_shared_system_pool(gpu)]
 
 
-def _gpu_identity(gpu: GPUInfo) -> str:
+def gpu_identity(gpu: GPUInfo) -> str:
     name = gpu.name.lower().replace("(simulated)", "")
     return " ".join(name.split())
 
 
-def _is_homogeneous_gpu_set(gpus: list[GPUInfo], available: list[int]) -> bool:
+def is_homogeneous_gpu_set(gpus: list[GPUInfo], available: list[int]) -> bool:
     if not gpus:
         return True
     first = gpus[0]
-    first_identity = _gpu_identity(first)
+    first_identity = gpu_identity(first)
     first_available = available[0]
     vram_tolerance = max(256 * 1024**2, int(first_available * 0.02))
     return all(
         gpu.vendor == first.vendor
-        and _gpu_identity(gpu) == first_identity
+        and gpu_identity(gpu) == first_identity
         and abs(gpu_available - first_available) <= vram_tolerance
         for gpu, gpu_available in zip(gpus, available, strict=True)
     )
 
 
-def _multi_gpu_effective_vram(
+def multi_gpu_effective_vram(
     gpus: list[GPUInfo],
     available: list[int],
     warnings: list[str],
 ) -> tuple[int, bool, int | None]:
+    # Multi-GPU fit model. Shrinks raw VRAM into a conservative split budget.
     raw_total = sum(available)
     if len(gpus) <= 1:
         return raw_total, False, None
@@ -95,13 +90,13 @@ def _multi_gpu_effective_vram(
         )
         return effective, False, None
 
-    homogeneous = _is_homogeneous_gpu_set(gpus, available)
+    homogeneous = is_homogeneous_gpu_set(gpus, available)
     utilization = (
-        _MULTI_GPU_HOMOGENEOUS_UTILIZATION
+        MULTI_GPU_HOMOGENEOUS_UTILIZATION
         if homogeneous
-        else _MULTI_GPU_HETEROGENEOUS_UTILIZATION
+        else MULTI_GPU_HETEROGENEOUS_UTILIZATION
     )
-    overhead = min(raw_total, len(gpus) * _MULTI_GPU_FRAMEWORK_OVERHEAD_BYTES)
+    overhead = min(raw_total, len(gpus) * MULTI_GPU_FRAMEWORK_OVERHEAD_BYTES)
     effective = int((raw_total - overhead) * utilization)
 
     warnings.append(
@@ -123,6 +118,7 @@ def check_compatibility(
     context_length: int = 4096,
     vision_workload: VisionWorkload | None = None,
 ) -> CompatibilityResult:
+    # Main fit pass. Produces run type, budgets, and hardware warnings.
     warnings: list[str] = []
 
     vram_required = estimate_vram(model, variant, context_length, vision_workload)
@@ -132,10 +128,10 @@ def check_compatibility(
     best_gpu: GPUInfo | None = None
     best_gpu_available = 0
     gpu_available_values: list[int] = []
-    candidate_gpus = _fit_candidate_gpus(hardware.gpus)
+    candidate_gpus = fit_candidate_gpus(hardware.gpus)
     ram_budget_active = hardware.ram_budget_bytes is not None
     for gpu in candidate_gpus:
-        gpu_available = _gpu_available_memory(
+        gpu_available = gpu_available_memory(
             gpu, usable_ram, ram_budget_active=ram_budget_active
         )
         gpu_available_values.append(gpu_available)
@@ -144,8 +140,8 @@ def check_compatibility(
             best_gpu_available = gpu_available
 
     vram_available = sum(gpu_available_values) if gpu_available_values else 0
-    fit_vram_available, uses_multi_gpu, multi_gpu_effective_vram = (
-        _multi_gpu_effective_vram(candidate_gpus, gpu_available_values, warnings)
+    fit_vram_available, uses_multi_gpu, multi_gpu_effective_vram_bytes = (
+        multi_gpu_effective_vram(candidate_gpus, gpu_available_values, warnings)
     )
     if (
         len(candidate_gpus) > 1
@@ -166,9 +162,8 @@ def check_compatibility(
                 f"minimum {MIN_COMPUTE_CAPABILITY_OLLAMA} for Ollama"
             )
 
-    # Flag legacy Kepler GPUs that have no CUDA support in modern llama.cpp.
-    # They can still run, but only through the Vulkan backend on Linux.
-    if best_gpu and _is_vulkan_only_gpu(best_gpu):
+
+    if best_gpu and is_vulkan_only_gpu(best_gpu):
         warnings.append(
             "Legacy Kepler GPU: no CUDA support in modern llama.cpp; "
             "use the Vulkan backend (Linux) instead"
@@ -217,7 +212,7 @@ def check_compatibility(
         offload_ratio = 0.0
         warnings.append("Insufficient memory (GPU VRAM + RAM) to run this model")
 
-    # Context length warning
+
     context_fits = not (
         model.context_length is not None and model.context_length < context_length
     )
@@ -235,7 +230,7 @@ def check_compatibility(
             f"Large context ({context_length}) increases VRAM usage significantly"
         )
 
-    # File size vs disk space
+
     file_size = estimate_weight_bytes(model, variant)
     if hardware.disk_free_bytes > 0 and file_size > hardware.disk_free_bytes:
         warnings.append("Insufficient disk space to download this model")
@@ -249,7 +244,7 @@ def check_compatibility(
         vram_available_bytes=vram_available,
         offload_ratio=offload_ratio,
         uses_multi_gpu=uses_multi_gpu,
-        multi_gpu_effective_vram_bytes=multi_gpu_effective_vram,
+        multi_gpu_effective_vram_bytes=multi_gpu_effective_vram_bytes,
         warnings=warnings,
         fit_type=fit_type,
         context_fits=context_fits,

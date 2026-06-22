@@ -1,5 +1,3 @@
-"""VLM package graph parsing and serialization helpers."""
-
 from __future__ import annotations
 
 import re
@@ -12,6 +10,7 @@ from whichvlm.models.types import (
     ModelLineage,
 )
 
+# Package graph. Stores artifacts, components, and lineage per model.
 
 def looks_quantized_repo_name(model_id: str) -> bool:
     lower = model_id.lower()
@@ -38,6 +37,7 @@ def backend_support_for_artifact(
     artifact_format_value: str,
     quantization_type: str | None,
 ) -> list[str]:
+    # Backend map. Tells ranking which runtimes each artifact can use.
     fmt = artifact_format_value.lower()
     quant = (quantization_type or "").upper()
     if fmt == "gguf":
@@ -118,6 +118,7 @@ def build_artifacts(
     parameter_count: int,
     projector_files: list[tuple[str, int | None]] | None = None,
 ) -> list[ModelArtifact]:
+    # Artifact builder. Expands one model record into runnable file entries.
     projector_artifacts = [
         ModelArtifact(
             repo_id=model_id,
@@ -175,6 +176,7 @@ def build_components(
     tags: list[str],
     lineage: ModelLineage,
 ) -> list[ModelComponent]:
+    # Component builder. Describes language, vision, and projector pieces.
     if lineage.is_merged:
         return [
             ModelComponent(
@@ -303,7 +305,7 @@ def lineage_from_dict(data: dict | None, base_model: str | None) -> ModelLineage
     )
 
 
-def _artifact_key(artifact: ModelArtifact) -> tuple:
+def artifact_key(artifact: ModelArtifact) -> tuple:
     return (
         artifact.repo_id,
         artifact.format,
@@ -313,7 +315,7 @@ def _artifact_key(artifact: ModelArtifact) -> tuple:
     )
 
 
-def _component_key(component: ModelComponent) -> tuple:
+def component_key(component: ModelComponent) -> tuple:
     return (
         component.role,
         component.repo_id,
@@ -322,7 +324,7 @@ def _component_key(component: ModelComponent) -> tuple:
     )
 
 
-def _merge_family_lineage(group: list[ModelInfo]) -> ModelLineage:
+def merge_family_lineage(group: list[ModelInfo]) -> ModelLineage:
     base_ids: list[str] = []
     merged_ids: list[str] = []
     variant_of = None
@@ -365,11 +367,11 @@ def merge_family_graph(
     components_by_key: dict[tuple, ModelComponent] = {}
     for model in group:
         for artifact in model.artifacts:
-            artifacts_by_key.setdefault(_artifact_key(artifact), artifact)
+            artifacts_by_key.setdefault(artifact_key(artifact), artifact)
         for component in model.components:
-            components_by_key.setdefault(_component_key(component), component)
+            components_by_key.setdefault(component_key(component), component)
     return (
         list(artifacts_by_key.values()),
         list(components_by_key.values()),
-        _merge_family_lineage(group),
+        merge_family_lineage(group),
     )

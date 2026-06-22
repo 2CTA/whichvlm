@@ -1,5 +1,3 @@
-"""Benchmark data fetching."""
-
 from __future__ import annotations
 
 import asyncio
@@ -15,13 +13,14 @@ import httpx
 
 from whichvlm.utils import cache_dir, current_version
 
+# Benchmark merge layer. Blends current and fallback score sources.
 logger = logging.getLogger(__name__)
 
 CACHE_DIR = cache_dir()
 BENCHMARK_CACHE = CACHE_DIR / "benchmark.json"
-DEFAULT_TTL_SECONDS = 24 * 3600  # 24 hours
+DEFAULT_TTL_SECONDS = 24 * 3600
 
-_VLM_BENCHMARK_ID_RE = re.compile(
+VLM_BENCHMARK_ID_RE = re.compile(
     r"(?:^|[-_/])(vl|vision|multimodal|llava|pixtral|image)(?:[-_/]|$)|"
     r"internvl\d*|"
     r"qwen.*vl|deepseek[-_]?vl|glm-?4v|glm-?4\.5v",
@@ -31,28 +30,18 @@ _VLM_BENCHMARK_ID_RE = re.compile(
 
 @dataclass(frozen=True)
 class BenchmarkEvidence:
-    """Benchmark evidence with confidence.
-
-    source values, ordered from most trusted to least:
-      - "direct"        : independent external benchmark hit on exact id
-      - "variant"       : suffix-stripped derivative of a direct evidence hit
-      - "base_model"    : cardData.base_model pointer to a direct hit
-      - "line_interp"   : size-aware interpolation within the same model line
-      - "self_reported" : evalResults reported by the uploader themselves
-      - "none"          : no usable signal
-    """
-
+    # Evidence record. Carries score plus trust level for one match.
     score: float | None
     confidence: float
-    source: str  # see above
+    source: str
 
 
-def _looks_like_vlm_id(model_id: str) -> bool:
-    return bool(_VLM_BENCHMARK_ID_RE.search(model_id))
+def looks_like_vlm_id(model_id: str) -> bool:
+    return bool(VLM_BENCHMARK_ID_RE.search(model_id))
 
 
-def _benchmark_confidence(model_id: str, source: str, default: float) -> float:
-    if not _looks_like_vlm_id(model_id):
+def benchmark_confidence(model_id: str, source: str, default: float) -> float:
+    if not looks_like_vlm_id(model_id):
         return default
     vlm_confidence = {
         "direct": 0.88,
@@ -65,6 +54,7 @@ def _benchmark_confidence(model_id: str, source: str, default: float) -> float:
 
 
 def load_benchmark_cache() -> dict[str, float] | None:
+    # Cache read. Reuses merged benchmark scores until ttl expires.
     if not BENCHMARK_CACHE.exists():
         return None
     try:
@@ -91,14 +81,14 @@ def save_benchmark_cache(scores: dict[str, float]) -> None:
     logger.debug(f"Saved {len(scores)} benchmark scores to cache")
 
 
-_LINEAGE_DEMOTION_REGEX = None
+LINEAGE_REGEX_CACHE = None
 
 
-def _build_lineage_regex():
-    """Compile MODEL_LINEAGE_VERSIONS once into (family, [(re, idx)]) form."""
-    global _LINEAGE_DEMOTION_REGEX
-    if _LINEAGE_DEMOTION_REGEX is not None:
-        return _LINEAGE_DEMOTION_REGEX
+def lineage_regex_table():
+    # Regex cache. Compiles family lineage rules once for generation math.
+    global LINEAGE_REGEX_CACHE
+    if LINEAGE_REGEX_CACHE is not None:
+        return LINEAGE_REGEX_CACHE
     from whichvlm.constants import MODEL_LINEAGE_VERSIONS
 
     out = {}
@@ -106,20 +96,16 @@ def _build_lineage_regex():
         compiled = [(re.compile(pat), idx) for pat, idx in entries]
         max_idx = max(idx for _, idx in entries)
         out[family] = (compiled, max_idx)
-    _LINEAGE_DEMOTION_REGEX = out
+    LINEAGE_REGEX_CACHE = out
     return out
 
 
-def _lineage_recency_factor(model_id: str) -> float:
-    """Return a multiplicative recency factor for frozen-only scores.
+def lineage_recency_factor(model_id: str) -> float:
 
-    Newest generation in a known family → 1.0 (no demotion). Each generation
-    older → another 12% off. Unknown families → 1.0.
-    """
     if not model_id:
         return 1.0
     lower = model_id.lower()
-    families = _build_lineage_regex()
+    families = lineage_regex_table()
     best_factor = 1.0
     for family, (patterns, max_idx) in families.items():
         for regex, idx in patterns:
@@ -128,21 +114,16 @@ def _lineage_recency_factor(model_id: str) -> float:
                 factor = max(0.55, 1.0 - 0.12 * gens_old)
                 if factor < best_factor:
                     best_factor = factor
-                break  # one family per id
+                break
     return best_factor
 
 
-def _apply_lineage_recency_demotion(
+def apply_lineage_recency_demotion(
     combined: dict[str, float],
     frozen: dict[str, float],
     current: dict[str, float],
 ) -> dict[str, float]:
-    """Multiply frozen-only entries by a lineage-derived recency factor.
 
-    A score is "frozen-only" when no current source provided a value for that
-    id. Models with current coverage are left alone — their score already
-    reflects recent evaluation methodology.
-    """
     if not combined:
         return combined
     out: dict[str, float] = {}
@@ -150,25 +131,13 @@ def _apply_lineage_recency_demotion(
         if k in current:
             out[k] = v
             continue
-        factor = _lineage_recency_factor(k)
+        factor = lineage_recency_factor(k)
         out[k] = round(v * factor, 1)
     return out
 
 
 async def fetch_benchmark_scores() -> dict[str, float]:
-    """Fetch and combine benchmark scores from multiple sources.
-
-    Sources, merged in this order (later overwrites earlier on conflict):
-      1. Archived legacy corpus (broad legacy coverage)
-      2. Frozen benchmark archive (older but still useful fallback)
-      3. Monthly refresh dataset (current generation)
-      4. Coding-capability dataset (current generation, narrow domain)
-      5. Multimodal-capability index (frontier-focused supplement)
-
-    Returns dict mapping model_id -> normalized score (0-100). All sources
-    are fetched concurrently; any source that fails is logged and skipped,
-    and the function never raises.
-    """
+    # Main fetch. Pulls every benchmark source and merges trust tiers.
     from whichvlm.models.benchmark_sources import (
         fetch_aa_index_scores,
         fetch_aider_polyglot_scores,
@@ -202,22 +171,18 @@ async def fetch_benchmark_scores() -> dict[str, float]:
             return_exceptions=True,
         )
 
-    # Layered merge: build a "current" dict from recent sources and a "frozen"
-    # dict from archival sources. The current dict OVERRIDES the frozen one
-    # per-model — so an older release with a stale high score cannot beat a
-    # current frontier release measured in recent data. Frozen scores still
-    # cover the long tail of older models not tracked by recent feeds.
+
     frozen: dict[str, float] = {}
     current: dict[str, float] = {}
 
-    # Frozen tier #1: legacy archive (broader historical coverage)
+
     if isinstance(lb_result, BaseException):
         logger.warning(f"Leaderboard fetch failed: {lb_result}")
     else:
         frozen.update(lb_result)
         logger.debug(f"Leaderboard: {len(lb_result)} scores (frozen)")
 
-    # Frozen tier #2: frozen archive with no recent updates
+
     if isinstance(arena_result, BaseException):
         logger.warning(f"secondary benchmark fetch failed, using fallback: {arena_result}")
     else:
@@ -226,14 +191,14 @@ async def fetch_benchmark_scores() -> dict[str, float]:
                 frozen[k] = v
         logger.debug(f"secondary benchmark: {len(arena_result)} scores (frozen)")
 
-    # Current tier: recency-updated index
+
     livebench_result = get_livebench_data()
     for k, v in livebench_result.items():
         if current.get(k, 0.0) < v:
             current[k] = v
     logger.debug(f"vision index: {len(livebench_result)} scores (current)")
 
-    # Current tier: multimodal-capability index (~weekly refresh)
+
     if isinstance(aa_result, BaseException):
         logger.warning(f"capability index fetch failed, using fallback: {aa_result}")
         aa_result = get_aa_curated_fallback()
@@ -243,10 +208,7 @@ async def fetch_benchmark_scores() -> dict[str, float]:
             current[k] = v
     logger.debug(f"capability index: {len(aa_result)} scores (current)")
 
-    # Current tier: coding dataset. Treat as a current
-    # source but soft-merged — coding is one axis of capability, so a high
-    # coding score is informative but shouldn't unilaterally dethrone a
-    # weaker-coding-but-strong-general capability-source result.
+
     if isinstance(aider_result, BaseException):
         logger.warning(f"coding benchmark fetch failed: {aider_result}")
     else:
@@ -255,36 +217,27 @@ async def fetch_benchmark_scores() -> dict[str, float]:
                 current[k] = v * 0.85
         logger.debug(f"coding benchmark: {len(aider_result)} scores (current, 0.85x)")
 
-    # Current tier: vision-language capability index. For VLM-looking IDs,
-    # this is the primary signal; legacy text scores remain fallback evidence.
+
     if isinstance(vision_result, BaseException):
         logger.warning(f"Vision fetch failed: {vision_result}")
     else:
         for k, v in vision_result.items():
-            if _looks_like_vlm_id(k) or current.get(k, 0.0) < v:
+            if looks_like_vlm_id(k) or current.get(k, 0.0) < v:
                 current[k] = v
         logger.debug(f"Vision: {len(vision_result)} scores (current)")
 
-    # Build combined: current overrides frozen entry-by-entry, but frozen still
-    # contributes for any id no current source has tracked.
+
     combined: dict[str, float] = dict(frozen)
     combined.update(current)
 
-    # Apply lineage-aware demotion to frozen-only scores. Without this, models
-    # without recent coverage can retain a stale high score, which can place
-    # older generation releases above newer frontier releases. This penalty keeps
-    # long-tail historical scores from dominating present-day hardware-relevant
-    # candidates.
-    # Demote frozen-only entries from non-newest generations of known families so
-    # the staleness penalty is uniform.
-    combined = _apply_lineage_recency_demotion(combined, frozen, current)
+
+    combined = apply_lineage_recency_demotion(combined, frozen, current)
 
     logger.debug(f"Combined: {len(combined)} benchmark scores")
     return combined
 
 
-def _extract_params_b_from_id(model_id: str) -> float | None:
-    """Extract parameter size in billions from model ID text."""
+def extract_params_b_from_id(model_id: str) -> float | None:
     lower = model_id.lower()
     matches = re.findall(r"(\d+(?:\.\d+)?)b(?:-a\d+(?:\.\d+)?b)?", lower)
     if not matches:
@@ -295,29 +248,19 @@ def _extract_params_b_from_id(model_id: str) -> float | None:
         return None
 
 
-def _extract_model_lines(model_id: str) -> list[str]:
-    """Extract model line candidates from a model ID (most specific first).
+def extract_model_lines(model_id: str) -> list[str]:
 
-    E.g.:
-        Qwen/Qwen3.5-27B -> [qwen/qwen3.5, qwen/qwen3]
-        Qwen/Qwen3-32B -> [qwen/qwen3]
-        Qwen/Qwen3-30B-A3B-Instruct-2507-FP8 -> [qwen/qwen3]
-        meta-llama/Llama-3.3-70B-Instruct -> [meta-llama/llama-3.3, meta-llama/llama-3]
-        google/gemma-3-27b-it -> [google/gemma-3]
-        deepseek-ai/DeepSeek-V3.2 -> [deepseek-ai/deepseek-v3.2, deepseek-ai/deepseek-v3]
-    """
     if "/" not in model_id:
         return []
     lower = model_id.lower()
 
-    # Pre-strip repo/quant suffixes and date codes before line extraction
+
     stripped = re.sub(r"-(gguf|awq|gptq|fp8|fp16|bf16|mxfp4|nvfp4)$", "", lower)
-    stripped = re.sub(r"-\d{4}(-hf)?$", "", stripped)  # date suffixes like -2507
+    stripped = re.sub(r"-\d{4}(-hf)?$", "", stripped)
 
     lines: list[str] = []
 
-    # Remove size suffix: -32b, -70b, -0.6b, -235b-a22b, etc.
-    # Allows trailing -instruct, -chat, -it, -base, -thinking, and arbitrary suffixes
+
     cleaned = re.sub(
         r"-\d+(\.\d+)?b(-a\d+b)?(-[a-z][-a-z0-9]*)*$",
         "",
@@ -326,7 +269,7 @@ def _extract_model_lines(model_id: str) -> list[str]:
     if cleaned != stripped and "/" in cleaned:
         lines.append(cleaned)
 
-    # Also strip minor version: qwen3.5 -> qwen3, llama-3.3 -> llama-3, v3.2 -> v3
+
     for line in list(lines) + ([stripped] if not lines else []):
         broader = re.sub(r"(\d+)\.\d+$", r"\1", line)
         if broader != line and broader not in lines:
@@ -335,11 +278,11 @@ def _extract_model_lines(model_id: str) -> list[str]:
     return lines
 
 
-def _interpolate_line_score(
+def interpolate_line_score(
     bucket: list[tuple[float | None, float]],
     params_b: float | None,
 ) -> tuple[float, float]:
-    """Interpolate score from same-model-line benchmarks with confidence."""
+
     if not bucket:
         return 0.0, 0.0
 
@@ -373,13 +316,7 @@ def _interpolate_line_score(
 def build_score_index(
     scores: dict[str, float],
 ) -> tuple[dict[str, float], dict[str, float]]:
-    """Build lookup indices from benchmark scores.
 
-    Returns:
-        (case_insensitive_index, line_index)
-        - case_insensitive_index: lowercased model_id -> best score
-        - line_index: model_line -> best score among all models in that line
-    """
     ci_index: dict[str, float] = {}
     line_index: dict[str, float] = {}
 
@@ -388,9 +325,9 @@ def build_score_index(
         if lk not in ci_index or val > ci_index[lk]:
             ci_index[lk] = val
 
-        lines = _extract_model_lines(key)
+        lines = extract_model_lines(key)
         if not lines and "/" in key:
-            # No size suffix (e.g., DeepSeek-V3, DeepSeek-R1) → use ID as its own line
+
             lines = [lk]
         for line in lines:
             if line not in line_index or val > line_index[line]:
@@ -402,11 +339,11 @@ def build_score_index(
 def build_line_bucket_index(
     scores: dict[str, float],
 ) -> dict[str, list[tuple[float | None, float]]]:
-    """Build line -> [(params_b, score)] index for size-aware interpolation."""
+
     buckets: dict[str, list[tuple[float | None, float]]] = {}
     for key, val in scores.items():
-        params_b = _extract_params_b_from_id(key)
-        lines = _extract_model_lines(key)
+        params_b = extract_params_b_from_id(key)
+        lines = extract_model_lines(key)
         if not lines and "/" in key:
             lines = [key.lower()]
         for line in lines:
@@ -414,10 +351,9 @@ def build_line_bucket_index(
     return buckets
 
 
-def _try_lookup(
+def lookup_score(
     candidate: str, scores: dict[str, float], ci_index: dict[str, float]
 ) -> float | None:
-    """Try exact match, then case-insensitive match."""
     if candidate in scores:
         return scores[candidate]
     lc = candidate.lower()
@@ -426,21 +362,20 @@ def _try_lookup(
     return None
 
 
-_REPO_SUFFIXES = ("-GGUF", "-gguf", "-AWQ", "-GPTQ", "-FP8", "-fp8", "-BF16", "-bf16")
+REPO_SUFFIXES = ("-GGUF", "-gguf", "-AWQ", "-GPTQ", "-FP8", "-fp8", "-BF16", "-bf16")
 
 
-def _generate_candidates(model_id: str) -> list[str]:
-    """Generate candidate IDs to look up for a model."""
+def benchmark_id_candidates(model_id: str) -> list[str]:
     candidates = [model_id]
 
-    # Strip common GGUF/quant repo suffixes
-    for suffix in _REPO_SUFFIXES:
+
+    for suffix in REPO_SUFFIXES:
         if model_id.endswith(suffix):
             candidates.append(model_id[: -len(suffix)])
             break
 
-    # Try adding/removing -Instruct suffix
-    base = candidates[-1]  # use suffix-stripped version
+
+    base = candidates[-1]
     if base.endswith("-Instruct"):
         candidates.append(base[: -len("-Instruct")])
     else:
@@ -449,23 +384,23 @@ def _generate_candidates(model_id: str) -> list[str]:
     return candidates
 
 
-def _append_unique(candidates: list[str], candidate: str) -> None:
+def append_if_missing(candidates: list[str], candidate: str) -> None:
     if candidate and candidate not in candidates:
         candidates.append(candidate)
 
 
-def _strip_repo_suffix(model_id: str) -> str:
-    for suffix in _REPO_SUFFIXES:
+def strip_repo_suffix(model_id: str) -> str:
+    for suffix in REPO_SUFFIXES:
         if model_id.endswith(suffix):
             return model_id[: -len(suffix)]
     return model_id
 
 
-def _generate_score_name_candidates(
+def generate_score_name_candidates(
     model_id: str, scores: dict[str, float]
 ) -> list[str]:
-    """Match community repo names to benchmark IDs with the same model name."""
-    stripped = _strip_repo_suffix(model_id)
+
+    stripped = strip_repo_suffix(model_id)
     repo_name = stripped.rsplit("/", 1)[-1]
     model_names = [repo_name]
 
@@ -473,15 +408,15 @@ def _generate_score_name_candidates(
     if "_" in repo_name:
         org, name = repo_name.split("_", 1)
         if org and name:
-            _append_unique(explicit_candidates, f"{org}/{name}")
-            _append_unique(model_names, name)
+            append_if_missing(explicit_candidates, f"{org}/{name}")
+            append_if_missing(model_names, name)
 
     score_candidates: list[str] = []
     wanted_names = {name.lower() for name in model_names if name}
     for score_id in scores:
         score_name = score_id.rsplit("/", 1)[-1].lower()
         if score_name in wanted_names:
-            _append_unique(score_candidates, score_id)
+            append_if_missing(score_candidates, score_id)
 
     return explicit_candidates + [
         candidate
@@ -497,7 +432,7 @@ def lookup_benchmark(
     ci_index: dict[str, float] | None = None,
     line_index: dict[str, float] | None = None,
 ) -> tuple[float, bool] | None:
-    """Backward-compatible benchmark lookup helper."""
+
     evidence = lookup_benchmark_evidence(
         model_id,
         base_model,
@@ -510,18 +445,11 @@ def lookup_benchmark(
     return evidence.score, evidence.source == "direct"
 
 
-def _params_compatible(actual_b: float | None, ref_id: str) -> bool:
-    """Reject benchmark inheritance when the actual model size differs sharply
-    from the size implied by a reference id. Catches cases like a 6.6B
-    "imatrix-aligned" / draft / MTP head being matched to its 158B base model.
+def params_compatible(actual_b: float | None, ref_id: str) -> bool:
 
-    Returns True if no actual size is provided (no check possible) or if
-    ratio(actual, ref) stays inside [0.5, 2.0]. The window is wide enough
-    that legitimate quantizations of the same model are unaffected.
-    """
     if actual_b is None or actual_b <= 0:
         return True
-    ref_b = _extract_params_b_from_id(ref_id)
+    ref_b = extract_params_b_from_id(ref_id)
     if ref_b is None or ref_b <= 0:
         return True
     ratio = actual_b / ref_b
@@ -538,80 +466,67 @@ def lookup_benchmark_evidence(
     self_reported_score: float | None = None,
     actual_params_b: float | None = None,
 ) -> BenchmarkEvidence:
-    """Look up benchmark evidence with confidence.
+    # Evidence lookup. Returns score plus how that score was inferred.
 
-    Resolution order:
-      direct evidence → variant → base_model → line_interp → self_reported
-
-    self_reported_score should be the uploader-provided evalResults score from
-    the model card. It is the lowest-trust source and is only returned when
-    every evidence path fails.
-
-    actual_params_b: actual parameter count in billions. When provided, the
-    function refuses to inherit from base_model/variant ids whose implied
-    size is more than 2x off from actual (e.g. a 6.6B "imatrix-aligned"
-    inheriting from a 158B base would be rejected).
-    """
     if ci_index is None or line_index is None:
         ci_index, line_index = build_score_index(scores)
     if line_bucket_index is None:
         line_bucket_index = build_line_bucket_index(scores)
 
-    # Only exact model_id match in an independent external benchmark is considered
-    # direct evidence. Self-reported evalResults are handled at the very end.
-    direct_result = _try_lookup(model_id, scores, ci_index)
+
+    direct_result = lookup_score(model_id, scores, ci_index)
     if direct_result is not None:
         return BenchmarkEvidence(
             score=direct_result,
-            confidence=_benchmark_confidence(model_id, "direct", 1.0),
+            confidence=benchmark_confidence(model_id, "direct", 1.0),
             source="direct",
         )
 
-    # Try model_id-derived variants (inherited)
-    variant_candidates = _generate_candidates(model_id)[1:]
-    for candidate in _generate_score_name_candidates(model_id, scores):
-        _append_unique(variant_candidates, candidate)
+
+    variant_candidates = benchmark_id_candidates(model_id)[1:]
+    for candidate in generate_score_name_candidates(model_id, scores):
+        append_if_missing(variant_candidates, candidate)
     for candidate in variant_candidates:
-        result = _try_lookup(candidate, scores, ci_index)
+        result = lookup_score(candidate, scores, ci_index)
         if result is not None:
-            if not _params_compatible(actual_params_b, candidate):
+            if not params_compatible(actual_params_b, candidate):
                 continue
             return BenchmarkEvidence(
                 score=result,
-                confidence=_benchmark_confidence(model_id, "variant", 0.55),
+                confidence=benchmark_confidence(model_id, "variant", 0.55),
                 source="variant",
             )
 
-    # Try base_model and its variants
+
     if base_model:
-        for candidate in _generate_candidates(base_model):
-            result = _try_lookup(candidate, scores, ci_index)
+        for candidate in benchmark_id_candidates(base_model):
+            result = lookup_score(candidate, scores, ci_index)
             if result is not None:
-                if not _params_compatible(actual_params_b, candidate):
+                if not params_compatible(actual_params_b, candidate):
                     continue
                 return BenchmarkEvidence(
                     score=result,
-                    confidence=_benchmark_confidence(model_id, "base_model", 0.60),
+                    confidence=benchmark_confidence(model_id, "base_model", 0.60),
                     source="base_model",
                 )
 
-    # Fallback: size-aware interpolation within model line.
+
     size_hint = (
         actual_params_b
-        or _extract_params_b_from_id(model_id)
-        or _extract_params_b_from_id(base_model or "")
+        or extract_params_b_from_id(model_id)
+        or extract_params_b_from_id(base_model or "")
     )
     for mid in (model_id, base_model):
         if mid:
-            for line in _extract_model_lines(mid):
+            for line in extract_model_lines(mid):
                 if line in line_bucket_index:
-                    score, conf = _interpolate_line_score(
+                    score, conf = interpolate_line_score(
                         line_bucket_index[line], size_hint
                     )
                     if score > 0:
                         return BenchmarkEvidence(
                             score=score,
-                            confidence=_benchmark_confidence(
+                            confidence=benchmark_confidence(
                                 model_id, "line_interp", conf
                             ),
                             source="line_interp",
@@ -619,15 +534,13 @@ def lookup_benchmark_evidence(
                 if line in line_index:
                     return BenchmarkEvidence(
                         score=line_index[line],
-                        confidence=_benchmark_confidence(
+                        confidence=benchmark_confidence(
                             model_id, "line_interp", 0.22
                         ),
                         source="line_interp",
                     )
 
-    # Last resort: uploader-reported eval. Anyone can write any number here so
-    # we keep confidence low and require downstream consumers to weight this
-    # source separately.
+
     if (
         self_reported_score is not None
         and isinstance(self_reported_score, (int, float))
@@ -635,7 +548,7 @@ def lookup_benchmark_evidence(
     ):
         return BenchmarkEvidence(
             score=float(self_reported_score),
-            confidence=_benchmark_confidence(model_id, "self_reported", 0.40),
+            confidence=benchmark_confidence(model_id, "self_reported", 0.40),
             source="self_reported",
         )
 

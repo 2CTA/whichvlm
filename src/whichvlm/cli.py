@@ -1,10 +1,7 @@
-"""CLI entry point using typer."""
-
 from __future__ import annotations
 
 import asyncio
 import re
-import sys
 from typing import Optional
 
 import httpx
@@ -23,6 +20,7 @@ from whichvlm.runtime import (
 )
 from whichvlm.utils import current_version, CONTEXT_LENGTH
 
+# CLI hub. Turns flags into load, rank, run, and render work.
 app = typer.Typer(
     name="whichvlm",
     help="Find local vision-language models that fit your hardware.",
@@ -36,6 +34,7 @@ FETCH_ERRORS = (httpx.HTTPError, OSError, ValueError)
 
 
 def vlm_progress():
+    # Progress widget. Keeps network-heavy steps readable in terminal.
     from rich.progress import Progress, SpinnerColumn, TextColumn
 
     return Progress(
@@ -46,8 +45,8 @@ def vlm_progress():
     )
 
 
-def _format_fetch_error(error: Exception) -> str:
-    """Return a useful one-line fetch error even when str(error) is empty."""
+def format_fetch_error(error: Exception) -> str:
+    # Error flattener. Gives one short message even for empty HTTP errors.
     detail = str(error).strip()
     if detail:
         return detail
@@ -63,13 +62,13 @@ def _format_fetch_error(error: Exception) -> str:
     return f"{type(error).__name__} with no detail from the network layer"
 
 
-def _print_version(value: bool) -> None:
+def print_version(value: bool) -> None:
     if value:
         console.print(current_version())
         raise typer.Exit()
 
 
-def _validate_gpu_flags(
+def validate_gpu_flags(
     cpu_only: bool,
     gpu: list[str] | None,
     vram: float | None,
@@ -82,13 +81,13 @@ def _validate_gpu_flags(
         raise typer.Exit(code=1)
 
 
-def _validate_output_flags(json_output: bool, markdown_output: bool) -> None:
+def validate_output_flags(json_output: bool, markdown_output: bool) -> None:
     if json_output and markdown_output:
         console.print("[red]Error:[/] --json and --markdown are mutually exclusive.")
         raise typer.Exit(code=1)
 
 
-def _validate_profile(profile: str) -> str:
+def validate_profile(profile: str) -> str:
     valid = {"general", "coding", "vision", "math", "any"}
     p = profile.lower()
     if p not in valid:
@@ -99,7 +98,7 @@ def _validate_profile(profile: str) -> str:
     return p
 
 
-def _validate_evidence(evidence: str) -> str:
+def validate_evidence(evidence: str) -> str:
     valid = {"strict", "base", "any"}
     mode = evidence.lower()
     if mode not in valid:
@@ -108,15 +107,15 @@ def _validate_evidence(evidence: str) -> str:
     return mode
 
 
-def _resolve_evidence_mode(evidence: str, direct: bool) -> str:
-    mode = _validate_evidence(evidence)
+def resolve_evidence_mode(evidence: str, direct: bool) -> str:
+    mode = validate_evidence(evidence)
     if direct:
-        # Preserve --direct as the old spelling for strict evidence.
+
         return "strict"
     return mode
 
 
-def _resolve_fit_filter(fit: str, gpu_only: bool) -> str:
+def resolve_fit_filter(fit: str, gpu_only: bool) -> str:
     mode = fit.lower().replace("_", "-").replace(" ", "-")
     if mode not in {"any", "gpu", "full-gpu", "fullgpu"}:
         console.print("[red]Error:[/] --fit must be one of: any, gpu, full-gpu.")
@@ -126,7 +125,7 @@ def _resolve_fit_filter(fit: str, gpu_only: bool) -> str:
     return "full_gpu" if mode in {"gpu", "full-gpu", "fullgpu"} else "any"
 
 
-def _resolve_speed_filter(speed: str, min_speed: float | None) -> float | None:
+def resolve_speed_filter(speed: str, min_speed: float | None) -> float | None:
     if min_speed is not None:
         return min_speed
     mode = speed.lower().replace("_", "-")
@@ -141,16 +140,16 @@ def _resolve_speed_filter(speed: str, min_speed: float | None) -> float | None:
     return presets[mode]
 
 
-_MEMORY_RE = re.compile(
+MEMORY_RE = re.compile(
     r"^(?P<number>\d+(?:\.\d+)?)\s*(?P<unit>gib|gb|g|mib|mb|m)?$",
     re.IGNORECASE,
 )
 
 
-def _parse_memory_amount(
+def parse_memory_amount(
     value: str, *, option_name: str, total_bytes: int | None = None
 ) -> int:
-    """Parse memory CLI values. Bare numbers are treated as GiB."""
+    # Memory parser. Accepts GiB, MiB, and percent budget inputs.
     raw = value.strip()
     if not raw:
         console.print(f"[red]Error:[/] {option_name} cannot be empty.")
@@ -170,7 +169,7 @@ def _parse_memory_amount(
             raise typer.Exit(code=1)
         return int(total_bytes * pct / 100.0)
 
-    match = _MEMORY_RE.match(raw)
+    match = MEMORY_RE.match(raw)
     if not match:
         console.print(
             f"[red]Error:[/] Invalid {option_name}: {value!r}. "
@@ -189,35 +188,35 @@ def _parse_memory_amount(
     return int(number * 1024**2)
 
 
-def _auto_vram_headroom(vram_bytes: int) -> int:
+def auto_vram_headroom(vram_bytes: int) -> int:
     if vram_bytes <= 0:
         return 0
     return int(max(512 * 1024**2, min(vram_bytes * 0.05, 2 * BYTES_PER_GIB)))
 
 
-def _parse_vram_headroom(value: str, vram_bytes: int) -> int:
+def parse_vram_headroom(value: str, vram_bytes: int) -> int:
     mode = value.strip().lower()
     if mode == "auto":
-        return _auto_vram_headroom(vram_bytes)
+        return auto_vram_headroom(vram_bytes)
     if mode in {"none", "off", "0"}:
         return 0
-    return _parse_memory_amount(
+    return parse_memory_amount(
         value,
         option_name="--vram-headroom",
         total_bytes=vram_bytes,
     )
 
 
-def _apply_memory_budgets(
+def apply_memory_budgets(
     hardware: HardwareInfo,
     *,
     vram_headroom: str,
     ram_budget: str | None,
 ) -> HardwareInfo:
-    """Apply user-facing memory budgets without mutating detected raw sizes."""
+    # Budget pass. Writes usable memory limits onto detected hardware.
     headroom_mode = vram_headroom.strip().lower()
     if not hardware.gpus and headroom_mode not in {"auto", "none", "off", "0"}:
-        _parse_memory_amount(
+        parse_memory_amount(
             vram_headroom,
             option_name="--vram-headroom",
             total_bytes=BYTES_PER_GIB,
@@ -225,7 +224,7 @@ def _apply_memory_budgets(
 
     reserved_values: list[int] = []
     for gpu in hardware.gpus:
-        reserved = _parse_vram_headroom(vram_headroom, gpu.vram_bytes)
+        reserved = parse_vram_headroom(vram_headroom, gpu.vram_bytes)
         gpu.usable_vram_bytes = max(0, gpu.vram_bytes - reserved)
         if reserved > 0:
             reserved_values.append(reserved)
@@ -233,7 +232,7 @@ def _apply_memory_budgets(
     if reserved_values:
         unique_reserved = sorted(set(reserved_values))
         if len(unique_reserved) == 1:
-            note = f"VRAM headroom: {_format_budget_bytes(unique_reserved[0])} reserved per GPU"
+            note = f"VRAM headroom: {format_budget_bytes(unique_reserved[0])} reserved per GPU"
         else:
             note = "VRAM headroom: auto reserve applied per GPU"
         hardware.budget_notes.append(note)
@@ -245,19 +244,19 @@ def _apply_memory_budgets(
 
             hardware.ram_budget_bytes = detect_available_ram_bytes()
             hardware.budget_notes.append(
-                f"RAM budget: current available {_format_budget_bytes(hardware.ram_budget_bytes)}"
+                f"RAM budget: current available {format_budget_bytes(hardware.ram_budget_bytes)}"
             )
         elif mode not in {"auto", "none", "off"}:
-            hardware.ram_budget_bytes = _parse_memory_amount(
+            hardware.ram_budget_bytes = parse_memory_amount(
                 ram_budget, option_name="--ram-budget", total_bytes=hardware.ram_bytes
             )
             hardware.budget_notes.append(
-                f"RAM budget: {_format_budget_bytes(hardware.ram_budget_bytes)}"
+                f"RAM budget: {format_budget_bytes(hardware.ram_budget_bytes)}"
             )
     return hardware
 
 
-def _format_budget_bytes(value: int) -> str:
+def format_budget_bytes(value: int) -> str:
     if value >= BYTES_PER_GIB:
         return f"{value / BYTES_PER_GIB:.1f} GB"
     if value >= 1024**2:
@@ -265,7 +264,7 @@ def _format_budget_bytes(value: int) -> str:
     return f"{value / 1024:.0f} KB"
 
 
-def _apply_gpu_overrides(
+def apply_gpu_overrides(
     hardware: HardwareInfo,
     cpu_only: bool,
     gpu: list[str] | None,
@@ -284,17 +283,12 @@ def _apply_gpu_overrides(
     return hardware
 
 
-def _auto_min_params_for_profile(hardware: HardwareInfo, profile: str) -> float | None:
-    """Pick automatic min-params threshold for strongest general ranking.
+def auto_min_params_for_profile(hardware: HardwareInfo, profile: str) -> float | None:
 
-    The threshold rises with VRAM so a 24GB GPU is steered away from 3-4B
-    toys, but tiny GPUs (4-8GB) still see full-GPU options instead of being
-    forced into 7B+ partial-offload-only results.
-    """
     if profile != "general":
         return None
     if not hardware.gpus:
-        return 2.0  # CPU-only: tiny is the only practical choice
+        return 2.0
     from whichvlm.hardware.memory import effective_usable_ram
 
     usable_ram = effective_usable_ram(hardware.ram_bytes, hardware.ram_budget_bytes)
@@ -322,11 +316,11 @@ def _auto_min_params_for_profile(hardware: HardwareInfo, profile: str) -> float 
     return 2.0
 
 
-def _include_vision_candidates(profile: str) -> bool:
+def include_vision_candidates(profile: str) -> bool:
     return profile.lower() in {"vision", "any"}
 
 
-def _vision_workload_for_profile(
+def vision_workload_for_profile(
     profile: str,
     *,
     image_count: int = 1,
@@ -342,7 +336,7 @@ def _vision_workload_for_profile(
     ).normalized()
 
 
-def _fill_missing_published_at(
+def fill_missing_published_at(
     all_models: list,
     results: list,
     fetch_model_published_at,
@@ -363,11 +357,11 @@ def _fill_missing_published_at(
     return updated
 
 
-def _merge_model_eval_benchmarks(
+def merge_model_eval_benchmarks(
     models: list,
     benchmark_scores: dict[str, float],
 ) -> tuple[dict[str, float], int]:
-    """Keep card-provided evals out of independent benchmark scores."""
+
     return benchmark_scores, 0
 
 
@@ -378,7 +372,7 @@ def main(
         False,
         "--version",
         help="Show version and exit",
-        callback=_print_version,
+        callback=print_version,
         is_eager=True,
     ),
     refresh: bool = typer.Option(
@@ -482,16 +476,16 @@ def main(
         help="RAM budget for CPU/offload fallback: available | 8GB | 50%",
     ),
 ):
-    """Detect hardware and recommend local VLM candidates."""
+
     if ctx.invoked_subcommand is not None:
         return
 
-    _validate_gpu_flags(cpu_only, gpu, vram)
-    _validate_output_flags(json_output, markdown_output)
-    profile = _validate_profile(profile)
-    evidence_mode = _resolve_evidence_mode(evidence, direct)
-    fit_filter = _resolve_fit_filter(fit, gpu_only)
-    speed_filter = _resolve_speed_filter(speed, min_speed)
+    validate_gpu_flags(cpu_only, gpu, vram)
+    validate_output_flags(json_output, markdown_output)
+    profile = validate_profile(profile)
+    evidence_mode = resolve_evidence_mode(evidence, direct)
+    fit_filter = resolve_fit_filter(fit, gpu_only)
+    speed_filter = resolve_speed_filter(speed, min_speed)
 
     from whichvlm.engine.ranker import rank_models
     from whichvlm.hardware.detector import detect_hardware
@@ -516,15 +510,15 @@ def main(
     with vlm_progress() as progress:
         task = progress.add_task("scanning silicon...", total=None)
         hardware = detect_hardware()
-        _apply_gpu_overrides(hardware, cpu_only, gpu, vram)
-        _apply_memory_budgets(
+        apply_gpu_overrides(hardware, cpu_only, gpu, vram)
+        apply_memory_budgets(
             hardware, vram_headroom=vram_headroom, ram_budget=ram_budget
         )
         progress.update(task, description="hardware mapped")
 
         progress.update(task, description="loading VLM packages...")
-        models = _load_models(
-            refresh, include_vision=_include_vision_candidates(profile)
+        models = load_model_catalog(
+            refresh, include_vision=include_vision_candidates(profile)
         )
 
         progress.update(task, description="loading benchmark index...")
@@ -541,18 +535,18 @@ def main(
         progress.update(task, description="scoring multimodal fit...")
         families = group_models(models)
 
-        # Flatten all models with their family IDs set by grouper
+
         all_models = []
         for family in families:
             all_models.append(family.base_model)
             all_models.extend(family.variants)
 
         auto_min_params = (
-            _auto_min_params_for_profile(hardware, profile)
+            auto_min_params_for_profile(hardware, profile)
             if min_params is None
             else min_params
         )
-        vision_workload = _vision_workload_for_profile(
+        vision_workload = vision_workload_for_profile(
             profile,
             image_count=image_count,
             image_size=image_size,
@@ -575,7 +569,7 @@ def main(
             vision_workload=vision_workload,
         )
 
-        # If the auto floor hides every candidate, relax it so the user still sees options.
+
         if not results and auto_min_params is not None and min_params is None:
             results = rank_models(
                 all_models,
@@ -593,10 +587,10 @@ def main(
                 vision_workload=vision_workload,
             )
 
-        # Backfill dates only for visible results.
+
         if results:
             try:
-                if _fill_missing_published_at(
+                if fill_missing_published_at(
                     all_models, results, fetch_model_published_at
                 ):
                     save_cache(models_to_dicts(models))
@@ -605,7 +599,7 @@ def main(
                     task, description=f"Published date backfill skipped: {e}"
                 )
 
-    # Display results
+
     empty_message = None
     if fit_filter == "full_gpu":
         empty_message = (
@@ -653,14 +647,14 @@ def plan(
         False, "--refresh", help="Ignore cache and re-fetch models"
     ),
 ):
-    """Show what GPU you need to run a specific model."""
+
     from whichvlm.output.display import display_plan, display_plan_json
 
     with vlm_progress() as progress:
         task = progress.add_task("loading VLM packages...", total=None)
-        models = _load_models(refresh, include_vision=True)
+        models = load_model_catalog(refresh, include_vision=True)
 
-    model = _search_model(models, model_name)
+    model = resolve_model_match(models, model_name)
 
     target_quant = quant.upper() if quant else "Q4_K_M"
 
@@ -705,14 +699,7 @@ def upgrade(
     json_output: bool = typer.Option(False, "--json"),
     refresh: bool = typer.Option(False, "--refresh"),
 ):
-    """Compare the current machine against potential GPU upgrades.
 
-    For each GPU passed on the command line, simulate a system with the same
-    CPU/RAM but that GPU, run the ranker, and show the best-N models you'd
-    be able to run. Useful for answering "is upgrading from a 3090 to a 4090
-    worth it?" — the table shows the quality jump and the speed jump for
-    each option.
-    """
     from whichvlm.engine.ranker import rank_models
     from whichvlm.hardware.detector import detect_hardware
     from whichvlm.hardware.gpu_simulator import create_synthetic_gpu
@@ -725,7 +712,7 @@ def upgrade(
     from whichvlm.models.grouper import group_models
     from whichvlm.output.display import display_upgrade, display_upgrade_json
 
-    profile = _validate_profile(profile)
+    profile = validate_profile(profile)
 
     with vlm_progress() as progress:
         task = progress.add_task("scanning silicon...", total=None)
@@ -734,8 +721,8 @@ def upgrade(
             current_hw.gpus = []
 
         progress.update(task, description="loading VLM packages...")
-        models = _load_models(
-            refresh, include_vision=_include_vision_candidates(profile)
+        models = load_model_catalog(
+            refresh, include_vision=include_vision_candidates(profile)
         )
 
         progress.update(task, description="loading benchmark index...")
@@ -753,9 +740,9 @@ def upgrade(
             all_models.append(family.base_model)
             all_models.extend(family.variants)
 
-        def _rank_for(hw: HardwareInfo):
-            min_p = _auto_min_params_for_profile(hw, profile)
-            vision_workload = _vision_workload_for_profile(
+        def rank_for(hw: HardwareInfo):
+            min_p = auto_min_params_for_profile(hw, profile)
+            vision_workload = vision_workload_for_profile(
                 profile,
                 image_count=image_count,
                 image_size=image_size,
@@ -787,7 +774,7 @@ def upgrade(
             return results
 
         progress.update(task, description="scoring current hardware...")
-        current_results = _rank_for(current_hw)
+        current_results = rank_for(current_hw)
 
         target_results: list[tuple[str, HardwareInfo, list]] = []
         for raw_name in target_gpus:
@@ -807,7 +794,7 @@ def upgrade(
                 disk_free_bytes=current_hw.disk_free_bytes,
                 os=current_hw.os,
             )
-            sim_results = _rank_for(sim_hw)
+            sim_results = rank_for(sim_hw)
             target_results.append((raw_name, sim_hw, sim_results))
 
     if json_output:
@@ -818,23 +805,26 @@ def upgrade(
         console.print()
 
 
-def _load_models(refresh: bool, include_vision: bool = True):
+def load_model_catalog(refresh: bool, include_vision: bool = True) -> list[ModelInfo]:
+    # Model loader. Reuses cache first, then falls back to live HF fetch.
     from whichvlm.models.cache import load_cache, save_cache
     from whichvlm.models.fetcher import dicts_to_models, fetch_models, models_to_dicts
 
-    cached_data = None if refresh else load_cache()
-    if cached_data is not None:
-        return dicts_to_models(cached_data)
+    if not refresh:
+        cached = load_cache()
+        if cached is not None:
+            return dicts_to_models(cached)
     try:
         models = asyncio.run(fetch_models(include_vision=include_vision))
         save_cache(models_to_dicts(models))
         return models
     except FETCH_ERRORS as e:
-        console.print(f"[red]Error fetching models:[/] {_format_fetch_error(e)}")
-        sys.exit(1)
+        console.print(f"[red]Error fetching models:[/] {format_fetch_error(e)}")
+        raise typer.Exit(code=1) from e
 
 
-def _search_model(models: list, model_name: str):
+def resolve_model_match(models: list[ModelInfo], model_name: str) -> ModelInfo:
+    # Model resolver. Turns fuzzy CLI text into one concrete repo id.
     query_lower = model_name.lower()
     terms = query_lower.split()
 
@@ -866,16 +856,19 @@ def _search_model(models: list, model_name: str):
     return model
 
 
-def _pick_gguf_variant(model, quant_filter: str | None = None):
+def select_gguf_variant(
+    model: ModelInfo, quant_filter: str | None = None
+) -> GGUFVariant | None:
+    # Variant chooser. Picks the best local GGUF file for the request.
     from whichvlm.constants import QUANT_PREFERENCE_ORDER
 
     if not model.gguf_variants:
         return None
 
     if quant_filter:
-        for v in model.gguf_variants:
-            if v.quant_type.upper() == quant_filter.upper():
-                return v
+        variant = lookup_gguf_variant(model, quant_filter)
+        if variant is not None:
+            return variant
         console.print(
             f"[yellow]Warning:[/] {quant_filter} not available, using best match."
         )
@@ -887,14 +880,14 @@ def _pick_gguf_variant(model, quant_filter: str | None = None):
     return model.gguf_variants[0]
 
 
-def _find_gguf_variant(model: ModelInfo, quant_type: str) -> GGUFVariant | None:
+def lookup_gguf_variant(model: ModelInfo, quant_type: str) -> GGUFVariant | None:
     for variant in model.gguf_variants:
         if variant.quant_type.upper() == quant_type.upper():
             return variant
     return None
 
 
-def _is_same_model_family(candidate: ModelInfo, selected: ModelInfo) -> bool:
+def same_model_family(candidate: ModelInfo, selected: ModelInfo) -> bool:
     if candidate.id == selected.id:
         return True
     if candidate.family_id and selected.family_id:
@@ -909,7 +902,7 @@ def _is_same_model_family(candidate: ModelInfo, selected: ModelInfo) -> bool:
     return False
 
 
-def _has_compatible_parameter_count(candidate: ModelInfo, selected: ModelInfo) -> bool:
+def parameter_counts_compatible(candidate: ModelInfo, selected: ModelInfo) -> bool:
     if candidate.parameter_count <= 0 or selected.parameter_count <= 0:
         return True
     smaller = min(candidate.parameter_count, selected.parameter_count)
@@ -917,31 +910,26 @@ def _has_compatible_parameter_count(candidate: ModelInfo, selected: ModelInfo) -
     return (larger / smaller) <= 2.0
 
 
-def _resolve_ranked_gguf_for_run(
+def resolve_ranked_gguf_for_run(
     selected_model: ModelInfo,
     selected_variant: GGUFVariant,
     models: list[ModelInfo],
     quant_filter: str | None = None,
 ) -> tuple[ModelInfo, GGUFVariant] | None:
-    """Resolve a ranked GGUF candidate to a real GGUF repo/file for `run`.
-
-    The ranker may synthesize GGUF variants for official safetensors-only repos
-    so they can be scored realistically. `run` cannot execute those synthetic
-    files directly, so it must find a real GGUF sibling before launching.
-    """
+    # Runner resolver. Maps synthetic ranked variants to real GGUF repos.
     desired_quant = quant_filter or selected_variant.quant_type
 
     if selected_model.gguf_variants:
-        variant = _find_gguf_variant(selected_model, desired_quant)
+        variant = lookup_gguf_variant(selected_model, desired_quant)
         return (selected_model, variant) if variant else None
 
     candidates: list[tuple[bool, int, int, ModelInfo, GGUFVariant]] = []
     for model in models:
-        if not model.gguf_variants or not _is_same_model_family(model, selected_model):
+        if not model.gguf_variants or not same_model_family(model, selected_model):
             continue
-        if not _has_compatible_parameter_count(model, selected_model):
+        if not parameter_counts_compatible(model, selected_model):
             continue
-        variant = _find_gguf_variant(model, desired_quant)
+        variant = lookup_gguf_variant(model, desired_quant)
         if not variant:
             continue
         explicit_base = model.base_model == selected_model.id
@@ -983,7 +971,7 @@ def run(
         None, "--image", "-i", help="Image path for VLM runners"
     ),
 ):
-    """Download and run a model. Picks the best one if none specified."""
+
     import os
     import shutil
     import subprocess
@@ -998,12 +986,12 @@ def run(
 
     with vlm_progress() as progress:
         task = progress.add_task("loading VLM packages...", total=None)
-        models = _load_models(refresh)
+        models = load_model_catalog(refresh)
         progress.remove_task(task)
 
     variant = None
     if model_name:
-        model = _search_model(models, model_name)
+        model = resolve_model_match(models, model_name)
     else:
         from whichvlm.engine.ranker import rank_models
         from whichvlm.hardware.detector import detect_hardware
@@ -1037,7 +1025,7 @@ def run(
         model = None
         for ranked in results:
             if ranked.gguf_variant:
-                resolved = _resolve_ranked_gguf_for_run(
+                resolved = resolve_ranked_gguf_for_run(
                     ranked.model,
                     ranked.gguf_variant,
                     all_models,
@@ -1079,7 +1067,7 @@ def run(
             raise typer.Exit(code=1)
 
     if variant is None:
-        variant = _pick_gguf_variant(model, quant)
+        variant = select_gguf_variant(model, quant)
     if requires_image(model) and image is None:
         console.print("[red]Error:[/] VLM models require --image PATH.")
         raise typer.Exit(code=1)
@@ -1130,16 +1118,16 @@ def snippet(
         None, "--image", "-i", help="Image path for VLM snippets"
     ),
 ):
-    """Print a ready-to-run Python script for a model."""
+
     from rich.syntax import Syntax
 
     with vlm_progress() as progress:
         task = progress.add_task("loading VLM packages...", total=None)
-        models = _load_models(refresh)
+        models = load_model_catalog(refresh)
         progress.remove_task(task)
 
     if model_name:
-        model = _search_model(models, model_name)
+        model = resolve_model_match(models, model_name)
     else:
         gguf_models = [m for m in models if m.gguf_variants]
         if not gguf_models:
@@ -1148,7 +1136,7 @@ def snippet(
         gguf_models.sort(key=lambda m: m.downloads, reverse=True)
         model = gguf_models[0]
 
-    variant = _pick_gguf_variant(model, quant)
+    variant = select_gguf_variant(model, quant)
     deps, _ = resolve_model_deps(model, variant)
     if requires_image(model) and image is None:
         console.print("[red]Error:[/] VLM models require --image PATH.")
@@ -1183,8 +1171,8 @@ def hardware(
         None, "--vram", help="Override VRAM in GB (requires --gpu)"
     ),
 ):
-    """Show detected hardware information only."""
-    _validate_gpu_flags(cpu_only, gpu, vram)
+
+    validate_gpu_flags(cpu_only, gpu, vram)
 
     from whichvlm.hardware.detector import detect_hardware
     from whichvlm.output.display import display_hardware
@@ -1192,7 +1180,7 @@ def hardware(
     with vlm_progress() as progress:
         task = progress.add_task("scanning silicon...", total=None)
         hw = detect_hardware()
-        _apply_gpu_overrides(hw, cpu_only, gpu, vram)
+        apply_gpu_overrides(hw, cpu_only, gpu, vram)
         progress.remove_task(task)
 
     console.print()

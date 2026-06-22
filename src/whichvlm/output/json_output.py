@@ -1,5 +1,3 @@
-"""Machine-readable JSON output for ranking, plan, and upgrade surfaces."""
-
 from __future__ import annotations
 
 import json
@@ -13,11 +11,11 @@ from whichvlm.models.types import (
     ModelInfo,
     ModelLineage,
 )
-from whichvlm.output import _console
+from whichvlm.output import console
 from whichvlm.output.upgrade import summarize_upgrade_row
 
 
-def _backend_capability_dict(capability: BackendCapability) -> dict:
+def backend_capability_dict(capability: BackendCapability) -> dict:
     return {
         "name": capability.name,
         "available": capability.available,
@@ -26,7 +24,7 @@ def _backend_capability_dict(capability: BackendCapability) -> dict:
     }
 
 
-def _artifact_dict(artifact: ModelArtifact) -> dict:
+def artifact_dict(artifact: ModelArtifact) -> dict:
     return {
         "repo_id": artifact.repo_id,
         "format": artifact.format,
@@ -39,7 +37,7 @@ def _artifact_dict(artifact: ModelArtifact) -> dict:
     }
 
 
-def _component_dict(component: ModelComponent) -> dict:
+def component_dict(component: ModelComponent) -> dict:
     return {
         "role": component.role,
         "repo_id": component.repo_id,
@@ -48,7 +46,7 @@ def _component_dict(component: ModelComponent) -> dict:
     }
 
 
-def _lineage_dict(lineage: ModelLineage) -> dict:
+def lineage_dict(lineage: ModelLineage) -> dict:
     return {
         "base_model_ids": lineage.base_model_ids,
         "merged_parent_ids": lineage.merged_parent_ids,
@@ -70,7 +68,7 @@ def display_json(results: list[CompatibilityResult], hardware: HardwareInfo) -> 
                     "memory_bandwidth_gbps": g.memory_bandwidth_gbps,
                     "shared_memory": g.shared_memory,
                     "backend_capabilities": [
-                        _backend_capability_dict(c) for c in g.backend_capabilities
+                        backend_capability_dict(c) for c in g.backend_capabilities
                     ],
                     "neural_engine_available": g.neural_engine_available,
                 }
@@ -83,7 +81,7 @@ def display_json(results: list[CompatibilityResult], hardware: HardwareInfo) -> 
             "budget_notes": hardware.budget_notes,
             "os": hardware.os,
             "backend_capabilities": [
-                _backend_capability_dict(c) for c in hardware.backend_capabilities
+                backend_capability_dict(c) for c in hardware.backend_capabilities
             ],
         },
         "models": [
@@ -102,9 +100,9 @@ def display_json(results: list[CompatibilityResult], hardware: HardwareInfo) -> 
                 "base_model": r.model.base_model,
                 "base_models": r.model.base_models,
                 "variant_of": r.model.variant_of,
-                "artifacts": [_artifact_dict(a) for a in r.model.artifacts],
-                "components": [_component_dict(c) for c in r.model.components],
-                "lineage": _lineage_dict(r.model.lineage),
+                "artifacts": [artifact_dict(a) for a in r.model.artifacts],
+                "components": [component_dict(c) for c in r.model.components],
+                "lineage": lineage_dict(r.model.lineage),
                 "parameter_count": r.model.parameter_count,
                 "published_at": r.model.published_at,
                 "downloads": r.model.downloads,
@@ -138,7 +136,7 @@ def display_json(results: list[CompatibilityResult], hardware: HardwareInfo) -> 
             for i, r in enumerate(results, 1)
         ],
     }
-    _console.console.print_json(json.dumps(output, ensure_ascii=False))
+    console.console.print_json(json.dumps(output, ensure_ascii=False))
 
 
 def display_plan_json(
@@ -172,7 +170,7 @@ def display_plan_json(
             model, target_quant, target_vram
         ),
     }
-    _console.console.print_json(json.dumps(output, ensure_ascii=False))
+    console.console.print_json(json.dumps(output, ensure_ascii=False))
 
 
 def display_upgrade_json(
@@ -180,7 +178,7 @@ def display_upgrade_json(
     current_results: list,
     target_results: list[tuple[str, HardwareInfo, list]],
 ) -> None:
-    """Emit the upgrade comparison as JSON for scripting."""
+
     current_row = summarize_upgrade_row("Current", current_hw, current_results)
     rows = []
     for name, hw, res in target_results:
@@ -188,7 +186,7 @@ def display_upgrade_json(
         row["delta_quality"] = row["top_quality"] - current_row["top_quality"]
         row["delta_tok_s"] = row["top_tok_s"] - current_row["top_tok_s"]
         rows.append(row)
-    _console.console.print_json(
+    console.console.print_json(
         json.dumps(
             {"current": current_row, "targets": rows},
             ensure_ascii=False,

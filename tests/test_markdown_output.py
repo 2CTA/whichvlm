@@ -1,5 +1,3 @@
-"""Tests for pasteable Markdown ranking output."""
-
 from io import StringIO
 
 from rich.console import Console
@@ -17,7 +15,7 @@ def capture_markdown(
     show_status: bool,
     empty_message: str | None = None,
 ) -> str:
-    import whichvlm.output._console as console_mod
+    import whichvlm.output.console as console_mod
 
     buf = StringIO()
     orig_console = console_mod.console

@@ -1,8 +1,6 @@
-"""Tests for benchmark lookup direct/inherited semantics."""
-
 from whichvlm.models.benchmark import (
-    _lineage_recency_factor,
-    _looks_like_vlm_id,
+    lineage_recency_factor,
+    looks_like_vlm_id,
     build_line_bucket_index,
     build_score_index,
     lookup_benchmark,
@@ -24,10 +22,10 @@ def test_lookup_benchmark_model_id_match_is_direct():
 
 
 def test_vlm_benchmark_id_detector():
-    assert _looks_like_vlm_id("Qwen/Qwen2.5-VL-7B-Instruct")
-    assert _looks_like_vlm_id("OpenGVLab/InternVL3-8B")
-    assert _looks_like_vlm_id("llava-hf/llava-1.5-7b-hf")
-    assert not _looks_like_vlm_id("Qwen/Qwen3-8B-Instruct")
+    assert looks_like_vlm_id("Qwen/Qwen2.5-VL-7B-Instruct")
+    assert looks_like_vlm_id("OpenGVLab/InternVL3-8B")
+    assert looks_like_vlm_id("llava-hf/llava-1.5-7b-hf")
+    assert not looks_like_vlm_id("Qwen/Qwen3-8B-Instruct")
 
 
 def test_vlm_direct_benchmark_has_multimodal_confidence_calibration():
@@ -186,7 +184,7 @@ def test_lookup_benchmark_evidence_line_uses_size_aware_interpolation():
 
 
 def test_lineage_recency_t5gemma_variants_are_not_demoted_as_old_gemma():
-    assert _lineage_recency_factor("google/t5gemma-4b") == 1.0
-    assert _lineage_recency_factor("google/t5-gemma-4b") == 1.0
-    assert _lineage_recency_factor("google/t5_gemma-4b") == 1.0
-    assert _lineage_recency_factor("google/gemma-2-2b") < 1.0
+    assert lineage_recency_factor("google/t5gemma-4b") == 1.0
+    assert lineage_recency_factor("google/t5-gemma-4b") == 1.0
+    assert lineage_recency_factor("google/t5_gemma-4b") == 1.0
+    assert lineage_recency_factor("google/gemma-2-2b") < 1.0

@@ -1,5 +1,3 @@
-"""Module entry point for ``python -m whichvlm``."""
-
 from whichvlm.cli import app
 
 

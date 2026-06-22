@@ -1,17 +1,17 @@
-"""Runtime dependency and snippet generation for local VLM execution."""
-
 from __future__ import annotations
 
 from whichvlm.engine.quantization import infer_non_gguf_quant_type
 from whichvlm.models.package_graph import is_projector_filename, is_vision_model
 from whichvlm.models.types import GGUFVariant, ModelArtifact, ModelInfo
 
+# Runtime layer. Chooses script shape for transformers, GGUF, or MLX.
 
 class RuntimeUnsupportedError(ValueError):
     pass
 
 
 def is_vlm_model(model: ModelInfo) -> bool:
+    # VLM check. Detects image-capable models from tags and components.
     if is_vision_model(model.id, model.hf_pipeline_tag, model.tags):
         return True
     return any(
@@ -28,16 +28,16 @@ def resolve_model_deps(
     model: ModelInfo,
     variant: GGUFVariant | None,
 ) -> tuple[list[str], str]:
+    # Dependency planner. Returns pip deps plus runtime family label.
+    vlm_model = is_vlm_model(model)
     if variant:
         deps = ["llama-cpp-python", "huggingface-hub"]
-        if is_vlm_model(model):
+        if vlm_model:
             deps.append("pillow")
-        return deps, (
-            "gguf_vlm" if is_vlm_model(model) else "gguf"
-        )
+        return deps, "gguf_vlm" if vlm_model else "gguf"
 
-    if is_vlm_model(model):
-        if _is_mlx_model(model):
+    if vlm_model:
+        if is_mlx_model(model):
             return ["mlx-vlm", "pillow"], "mlx_vlm"
         return ["transformers", "torch", "accelerate", "pillow"], "transformers_vlm"
 
@@ -57,17 +57,19 @@ def generate_run_script(
     cpu_only: bool,
     image_path: str | None = None,
 ) -> str:
-    if is_vlm_model(model):
+    # Script builder. Emits the runnable snippet for one chosen path.
+    vlm_model = is_vlm_model(model)
+    if vlm_model:
         if image_path is None:
             raise RuntimeUnsupportedError("VLM runners require --image PATH.")
         if variant:
-            projector = _find_projector_artifact(model)
+            projector = find_projector_artifact(model)
             if projector is None or projector.filename is None:
                 raise RuntimeUnsupportedError(
                     "GGUF VLM runtime requires an mmproj/projector artifact in "
                     "the model package metadata."
                 )
-            return _generate_llama_cpp_vlm_script(
+            return generate_llama_cpp_vlm_script(
                 model,
                 variant,
                 projector,
@@ -75,16 +77,16 @@ def generate_run_script(
                 cpu_only,
                 image_path,
             )
-        if _is_mlx_model(model):
-            return _generate_mlx_vlm_script(model, image_path)
-        return _generate_transformers_vlm_script(model, image_path, cpu_only)
+        if is_mlx_model(model):
+            return generate_mlx_vlm_script(model, image_path)
+        return generate_transformers_vlm_script(model, image_path, cpu_only)
 
     if variant:
-        return _generate_llama_cpp_text_script(model, variant, context_length, cpu_only)
-    return _generate_transformers_text_script(model, cpu_only)
+        return generate_llama_cpp_text_script(model, variant, context_length, cpu_only)
+    return generate_transformers_text_script(model, cpu_only)
 
 
-def _is_mlx_model(model: ModelInfo) -> bool:
+def is_mlx_model(model: ModelInfo) -> bool:
     if model.model_format == "mlx":
         return True
     if (model.quantization_type or "").upper() == "MLX":
@@ -92,7 +94,8 @@ def _is_mlx_model(model: ModelInfo) -> bool:
     return any(artifact.format == "mlx" for artifact in model.artifacts)
 
 
-def _find_projector_artifact(model: ModelInfo) -> ModelArtifact | None:
+def find_projector_artifact(model: ModelInfo) -> ModelArtifact | None:
+    # Projector lookup. Finds the mmproj file VLM GGUF runners need.
     for artifact in model.artifacts:
         if artifact.source_kind == "mmproj" and artifact.filename:
             return artifact
@@ -102,7 +105,7 @@ def _find_projector_artifact(model: ModelInfo) -> ModelArtifact | None:
     return None
 
 
-def _generate_llama_cpp_text_script(
+def generate_llama_cpp_text_script(
     model: ModelInfo,
     variant: GGUFVariant,
     context_length: int,
@@ -148,7 +151,7 @@ print("\\nBye!")
 '''
 
 
-def _generate_llama_cpp_vlm_script(
+def generate_llama_cpp_vlm_script(
     model: ModelInfo,
     variant: GGUFVariant,
     projector: ModelArtifact,
@@ -248,7 +251,7 @@ print("\\nBye!")
 '''
 
 
-def _generate_transformers_text_script(model: ModelInfo, cpu_only: bool) -> str:
+def generate_transformers_text_script(model: ModelInfo, cpu_only: bool) -> str:
     device_map = '"cpu"' if cpu_only else '"auto"'
     dtype = "torch.float32" if cpu_only else '"auto"'
     return f'''\
@@ -313,7 +316,7 @@ finally:
 '''
 
 
-def _generate_transformers_vlm_script(
+def generate_transformers_vlm_script(
     model: ModelInfo,
     image_path: str,
     cpu_only: bool,
@@ -379,7 +382,7 @@ finally:
 '''
 
 
-def _generate_mlx_vlm_script(model: ModelInfo, image_path: str) -> str:
+def generate_mlx_vlm_script(model: ModelInfo, image_path: str) -> str:
     return f'''\
 from mlx_vlm import generate, load
 

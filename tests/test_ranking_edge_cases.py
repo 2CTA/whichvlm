@@ -1,23 +1,9 @@
-"""Ranking and hardware edge-case regressions.
-
-These tests cover stress cases across Apple GPU simulation, family inheritance
-order, grouper base selection, and reasoning-model surfacing:
-
-- ``--gpu "M1"`` must not fuzzy-match the 1997 ATI Rage Mobility-M1
-  (vendor=amd); ``--gpu "M3 Max"`` fell through to vendor=nvidia.
-- A 6.6B "imatrix-aligned" / MTP-head fork must not inherit its 158B
-  base's benchmark via family/base_model lookup.
-- A high-download fork must not become the family base when it references a
-  smaller-download base checkpoint.
-- Reasoning lines need curated benchmark entries so they can surface.
-"""
-
 from __future__ import annotations
 
 from whichvlm.engine.ranker import rank_models
 from whichvlm.hardware.gpu_simulator import create_synthetic_gpu
 from whichvlm.hardware.types import GPUInfo, HardwareInfo
-from whichvlm.models.benchmark import _params_compatible
+from whichvlm.models.benchmark import params_compatible
 from whichvlm.models.benchmark_sources.aa_index import AA_INDEX_FALLBACK_2026_05_14
 from whichvlm.models.benchmark_sources.livebench import LIVEBENCH_RAW_DATA
 from whichvlm.models.benchmark_sources.vision import VISION_FALLBACK_2026_05
@@ -25,7 +11,7 @@ from whichvlm.models.grouper import group_models
 from whichvlm.models.types import GGUFVariant, ModelInfo
 
 
-def _hw(
+def hw(
     vram_gb: int = 24,
     bandwidth_gbps: float = 1000.0,
     vendor: str = "nvidia",
@@ -54,7 +40,7 @@ def _hw(
     )
 
 
-def _gguf(quant: str, size_gb: float) -> GGUFVariant:
+def gguf(quant: str, size_gb: float) -> GGUFVariant:
     return GGUFVariant(
         filename=f"model-{quant}.gguf",
         quant_type=quant,
@@ -63,8 +49,7 @@ def _gguf(quant: str, size_gb: float) -> GGUFVariant:
 
 
 class TestAppleSiliconSimulator:
-    """``--gpu`` must recognize Apple Silicon instead of fuzzy-matching
-    discrete-GPU database entries."""
+
 
     def test_m1_default_is_apple_not_ati_rage_mobility(self):
         gpu = create_synthetic_gpu("M1")
@@ -74,7 +59,7 @@ class TestAppleSiliconSimulator:
             "Mobility-M1)"
         )
         assert "rage" not in gpu.name.lower()
-        # Default unified memory for the base M1 is 8 GB.
+
         assert gpu.vram_bytes == 8 * 1024**3
         assert gpu.memory_bandwidth_gbps == 68.25
 
@@ -94,44 +79,42 @@ class TestAppleSiliconSimulator:
         assert gpu.memory_bandwidth_gbps == 800.0
 
     def test_apple_chip_compact_form_is_recognized(self):
-        # Users type "M2Max" / "m2 max" / "M2 MAX" interchangeably.
+
         for name in ("M2Max", "m2 max", "M2 MAX"):
             gpu = create_synthetic_gpu(name, vram_override_gb=32)
             assert gpu.vendor == "apple", f"{name!r} not recognized as Apple"
             assert gpu.memory_bandwidth_gbps == 400.0
 
     def test_longest_match_wins_m2_ultra_not_m2(self):
-        # "M2 Ultra" must not be swallowed by the "M2" entry (100 GB/s).
+
         gpu = create_synthetic_gpu("M2 Ultra", vram_override_gb=128)
         assert gpu.memory_bandwidth_gbps == 800.0
         assert gpu.memory_bandwidth_gbps != 100.0
 
 
 class TestFamilySizeInheritance:
-    """A small fork must not inherit a much larger base model's
-    benchmark score."""
+
 
     def test_params_compatible_rejects_25x_mismatch(self):
-        # 6.6B vs an id that encodes 158B → ratio 0.04, must reject.
-        assert _params_compatible(6.6, "org/Some-Model-158B") is False
+
+        assert params_compatible(6.6, "org/Some-Model-158B") is False
 
     def test_params_compatible_accepts_same_size_quant(self):
-        # A Q4 repack of an 8B model is still 8B → must inherit.
-        assert _params_compatible(7.8, "org/Llama-3-8B-GGUF") is True
+
+        assert params_compatible(7.8, "org/Llama-3-8B-GGUF") is True
 
     def test_params_compatible_permissive_when_no_actual_size(self):
-        # No actual size → cannot judge, must not block (avoids
-        # false-negatives that would erase legitimate inheritance).
-        assert _params_compatible(None, "org/Model-70B") is True
+
+
+        assert params_compatible(None, "org/Model-70B") is True
 
     def test_params_compatible_permissive_when_ref_has_no_size(self):
-        # Base id without a parseable size (e.g. DeepSeek-V4-Flash) →
-        # the function alone cannot guard; the ranker's
-        # family_dominant_params check is the backstop (next test).
-        assert _params_compatible(6.6, "deepseek-ai/DeepSeek-V4-Flash") is True
+
+
+        assert params_compatible(6.6, "deepseek-ai/DeepSeek-V4-Flash") is True
 
     def test_ranker_drops_tiny_fork_inheriting_huge_base(self):
-        """A tiny fork must not inherit a much larger base score."""
+
         base = ModelInfo(
             id="org/DeepSeek-Vx-Flash",
             family_id="deepseek-vx-flash",
@@ -139,7 +122,7 @@ class TestFamilySizeInheritance:
             parameter_count=158_000_000_000,
             downloads=1_000_000,
             likes=1000,
-            gguf_variants=[],  # safetensors-only official
+            gguf_variants=[],
         )
         tiny_fork = ModelInfo(
             id="fork/DeepSeek-Vx-Flash-mtp-aligned",
@@ -149,15 +132,15 @@ class TestFamilySizeInheritance:
             downloads=0,
             likes=0,
             base_model="org/DeepSeek-Vx-Flash",
-            gguf_variants=[_gguf("Q8_0", 7.0)],
+            gguf_variants=[gguf("Q8_0", 7.0)],
         )
-        # External leaderboard only knows the 158B base.
+
         scores = {"org/DeepSeek-Vx-Flash": 92.0}
-        # Tiny VRAM: the 158B base cannot run; only the 6.6B fork fits.
-        hw = _hw(vram_gb=12)
+
+        hardware = hw(vram_gb=12)
         ranked = rank_models(
             [base, tiny_fork],
-            hw,
+            hardware,
             benchmark_scores=scores,
             require_direct_top=False,
         )
@@ -175,8 +158,7 @@ class TestFamilySizeInheritance:
 
 
 class TestGrouperReferencedBase:
-    """Family base selection must follow the base_model graph, not raw
-    download counts."""
+
 
     def test_referenced_base_wins_over_more_downloaded_fork(self):
         official = ModelInfo(
@@ -192,7 +174,7 @@ class TestGrouperReferencedBase:
             family_id="",
             name="Popular-4B-Fork",
             parameter_count=4_000_000_000,
-            downloads=1_300_000,  # more than the official base
+            downloads=1_300_000,
             base_model="Qwen/Qwen3-4B-Thinking-2507",
         )
         gguf_fork = ModelInfo(
@@ -202,17 +184,17 @@ class TestGrouperReferencedBase:
             parameter_count=4_000_000_000,
             downloads=26_000,
             base_model="Qwen/Qwen3-4B-Thinking-2507",
-            gguf_variants=[_gguf("Q4_K_M", 2.4)],
+            gguf_variants=[gguf("Q4_K_M", 2.4)],
         )
         families = group_models([popular_fork, official, gguf_fork])
-        # All three collapse into one family.
+
         assert len(families) == 1
         fam = families[0]
         assert fam.base_model.id == "Qwen/Qwen3-4B-Thinking-2507", (
             f"family base is {fam.base_model.id!r}; the popular fork "
             "overrode the referenced base"
         )
-        # Every member must carry the base-derived family_id.
+
         all_ids = {fam.base_model.id} | {v.id for v in fam.variants}
         assert "Qwen/Qwen3-4B-Thinking-2507" in all_ids
         for m in [official, popular_fork, gguf_fork]:
@@ -220,8 +202,8 @@ class TestGrouperReferencedBase:
             assert "rio" not in m.family_id
 
     def test_falls_back_to_downloads_without_base_reference(self):
-        # No member references another's base_model → keep the prior
-        # "most downloads, no GGUF" behaviour.
+
+
         a = ModelInfo(
             id="orgA/Model-7B",
             family_id="",
@@ -242,8 +224,7 @@ class TestGrouperReferencedBase:
 
 
 class TestReasoningSurface:
-    """Reasoning/thinking lines must have curated benchmark anchors and
-    surface in the ranking."""
+
 
     def test_qwq32b_has_curated_benchmarks(self):
         assert "Qwen/QwQ-32B" in LIVEBENCH_RAW_DATA
@@ -267,7 +248,7 @@ class TestReasoningSurface:
             name="QwQ-32B",
             parameter_count=32_800_000_000,
             downloads=64_000,
-            gguf_variants=[_gguf("Q4_K_M", 20.0)],
+            gguf_variants=[gguf("Q4_K_M", 20.0)],
         )
         filler = ModelInfo(
             id="org/Generic-7B",
@@ -275,12 +256,12 @@ class TestReasoningSurface:
             name="Generic-7B",
             parameter_count=7_000_000_000,
             downloads=10,
-            gguf_variants=[_gguf("Q4_K_M", 4.5)],
+            gguf_variants=[gguf("Q4_K_M", 4.5)],
         )
         scores = {"Qwen/QwQ-32B": 57.0}
-        hw = _hw(vram_gb=48)
+        hardware = hw(vram_gb=48)
         ranked = rank_models(
-            [qwq, filler], hw, benchmark_scores=scores, require_direct_top=False
+            [qwq, filler], hardware, benchmark_scores=scores, require_direct_top=False
         )
         ids = [r.model.id for r in ranked]
         assert "Qwen/QwQ-32B" in ids, "QwQ-32B did not surface in ranking"
@@ -290,20 +271,18 @@ class TestReasoningSurface:
 
 
 class TestVisionGenerationOrder:
-    """``--profile vision`` had no VLM benchmark source, so only a
-    two-generations-old Qwen2-VL-7B had a direct hit and outranked the
-    current Qwen3-VL-32B even on an 80 GB GPU."""
+
 
     def test_curated_vision_scores_respect_generation(self):
         v = VISION_FALLBACK_2026_05
-        # The whole point: newest generation must outscore the oldest.
+
         assert (
             v["Qwen/Qwen3-VL-32B-Instruct"]
             > v["Qwen/Qwen2.5-VL-32B-Instruct"]
             > v["Qwen/Qwen2-VL-7B-Instruct"]
         )
-        # Two-generations-old 7B must sit in the low band so it cannot
-        # win a vision ranking by virtue of being the only direct hit.
+
+
         assert v["Qwen/Qwen2-VL-7B-Instruct"] <= 35.0
 
     def test_qwen3_vl_outranks_legacy_qwen2_vl_on_vision_profile(self):
@@ -313,17 +292,17 @@ class TestVisionGenerationOrder:
             name="Qwen3-VL-32B-Instruct",
             parameter_count=33_400_000_000,
             downloads=1_500_000,
-            gguf_variants=[_gguf("Q4_K_M", 20.0)],
+            gguf_variants=[gguf("Q4_K_M", 20.0)],
         )
         legacy_vlm = ModelInfo(
             id="Qwen/Qwen2-VL-7B-Instruct",
             family_id="qwen2-vl-7b",
             name="Qwen2-VL-7B-Instruct",
             parameter_count=8_300_000_000,
-            downloads=2_000_000,  # more downloads — must NOT win
-            gguf_variants=[_gguf("Q4_K_M", 5.0)],
+            downloads=2_000_000,
+            gguf_variants=[gguf("Q4_K_M", 5.0)],
         )
-        # Feed the curated vision scores exactly as the merge would.
+
         scores = {
             "Qwen/Qwen3-VL-32B-Instruct": VISION_FALLBACK_2026_05[
                 "Qwen/Qwen3-VL-32B-Instruct"
@@ -332,10 +311,10 @@ class TestVisionGenerationOrder:
                 "Qwen/Qwen2-VL-7B-Instruct"
             ],
         }
-        hw = _hw(vram_gb=80)
+        hardware = hw(vram_gb=80)
         ranked = rank_models(
             [legacy_vlm, new_vlm],
-            hw,
+            hardware,
             benchmark_scores=scores,
             task_profile="vision",
             require_direct_top=False,
@@ -348,25 +327,22 @@ class TestVisionGenerationOrder:
 
 
 class TestApplePartialOffloadPenalty:
-    """Partial-offload penalty must respect memory architecture: Apple
-    unified memory has no PCIe cliff, so the discrete 0.45x penalty made
-    DeepSeek-R1-class models on M2/M3 Ultra report ~1.7 t/s vs a
-    real-world 4-15."""
 
-    def _model_variant(self):
+
+    def model_variant(self):
         m = ModelInfo(
             id="deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
             family_id="deepseek-r1-distill-qwen-32b",
             name="DeepSeek-R1-Distill-Qwen-32B",
             parameter_count=32_800_000_000,
         )
-        v = _gguf("Q4_K_M", 20.0)
+        v = gguf("Q4_K_M", 20.0)
         return m, v
 
     def test_apple_partial_offload_keeps_most_of_full_speed(self):
         from whichvlm.engine.performance import estimate_tok_per_sec
 
-        m, v = self._model_variant()
+        m, v = self.model_variant()
         apple = GPUInfo(
             name="M2 Ultra",
             vendor="apple",
@@ -377,8 +353,8 @@ class TestApplePartialOffloadPenalty:
         partial = estimate_tok_per_sec(m, v, apple, "partial_offload")
         assert full > 0
         ratio = partial / full
-        # 0.85 with the fix; 0.45 if the vendor branch is removed. The
-        # 0.7 threshold sits between the two regimes.
+
+
         assert ratio > 0.7, (
             f"Apple partial-offload ratio {ratio:.2f} — the discrete "
             "0.45x PCIe penalty is being wrongly applied to unified memory"
@@ -387,7 +363,7 @@ class TestApplePartialOffloadPenalty:
     def test_discrete_partial_offload_still_takes_pcie_penalty(self):
         from whichvlm.engine.performance import estimate_tok_per_sec
 
-        m, v = self._model_variant()
+        m, v = self.model_variant()
         nvidia = GPUInfo(
             name="RTX 4090",
             vendor="nvidia",
@@ -399,7 +375,7 @@ class TestApplePartialOffloadPenalty:
         partial = estimate_tok_per_sec(m, v, nvidia, "partial_offload")
         assert full > 0
         ratio = partial / full
-        # Discrete GPUs must keep the steep PCIe penalty (~0.45).
+
         assert ratio < 0.6, (
             f"discrete partial-offload ratio {ratio:.2f} — the PCIe "
             "penalty is too weak; offload should hurt on NVIDIA/AMD"
@@ -408,9 +384,9 @@ class TestApplePartialOffloadPenalty:
     def test_apple_partial_faster_than_discrete_partial_same_bandwidth(self):
         from whichvlm.engine.performance import estimate_tok_per_sec
 
-        m, v = self._model_variant()
-        # Same nominal bandwidth so the only difference is the
-        # architecture-aware offload penalty.
+        m, v = self.model_variant()
+
+
         apple = GPUInfo(
             name="Apple",
             vendor="apple",
@@ -434,8 +410,7 @@ class TestApplePartialOffloadPenalty:
 
 
 class TestMoESpeedEstimation:
-    """MoE speed estimation should use active params without letting
-    high-bandwidth GPUs turn sparse models into unrealistic outliers."""
+
 
     def test_qwen3_next_strix_halo_matches_reported_generation_speed(self):
         from whichvlm.engine.performance import estimate_tok_per_sec
@@ -532,7 +507,7 @@ class TestMoESpeedEstimation:
             parameter_count_active=3_000_000_000,
             is_moe=True,
         )
-        variant = _gguf("Q5_K_M", 20.6)
+        variant = gguf("Q5_K_M", 20.6)
         rtx_4090 = GPUInfo(
             name="RTX 4090",
             vendor="nvidia",
@@ -641,7 +616,7 @@ class TestSpeedUncertainty:
             parameter_count_active=3_800_000_000,
             is_moe=True,
         )
-        variant = _gguf("Q4_K_M", 15.0)
+        variant = gguf("Q4_K_M", 15.0)
         apple = GPUInfo(
             name="M3 Max",
             vendor="apple",

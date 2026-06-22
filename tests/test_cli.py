@@ -1,5 +1,3 @@
-"""Tests for CLI helper logic."""
-
 import httpx
 import pytest
 from typer import Exit
@@ -7,22 +5,22 @@ from typer import Exit
 import whichvlm.cli as cli_mod
 import whichvlm.__main__ as main_mod
 from whichvlm.cli import (
-    _apply_memory_budgets,
-    _apply_gpu_overrides,
-    _auto_min_params_for_profile,
-    _fill_missing_published_at,
-    _format_fetch_error,
-    _include_vision_candidates,
-    _merge_model_eval_benchmarks,
-    _parse_memory_amount,
-    _pick_gguf_variant,
-    _resolve_ranked_gguf_for_run,
-    _resolve_evidence_mode,
-    _resolve_fit_filter,
-    _resolve_speed_filter,
-    _search_model,
-    _validate_evidence,
-    _vision_workload_for_profile,
+    apply_memory_budgets,
+    apply_gpu_overrides,
+    auto_min_params_for_profile,
+    fill_missing_published_at,
+    format_fetch_error,
+    include_vision_candidates,
+    merge_model_eval_benchmarks,
+    parse_memory_amount,
+    resolve_model_match,
+    resolve_ranked_gguf_for_run,
+    resolve_evidence_mode,
+    resolve_fit_filter,
+    resolve_speed_filter,
+    select_gguf_variant,
+    validate_evidence,
+    vision_workload_for_profile,
     app,
 )
 from whichvlm.runtime import generate_run_script
@@ -33,7 +31,7 @@ from whichvlm.models.types import GGUFVariant, ModelArtifact, ModelInfo
 from typer.testing import CliRunner
 
 
-def _hw_with_gpu(vram_gb: int) -> HardwareInfo:
+def hw_with_gpu(vram_gb: int) -> HardwareInfo:
     return HardwareInfo(
         gpus=[
             GPUInfo(
@@ -52,26 +50,25 @@ def _hw_with_gpu(vram_gb: int) -> HardwareInfo:
 
 
 def test_auto_min_params_general_by_vram():
-    # Updated thresholds: tiny GPUs (4-8GB) get a lower floor so they can
-    # surface full-GPU 3-4B models instead of being forced into 7B+
-    # partial-offload-only candidates.
-    assert _auto_min_params_for_profile(_hw_with_gpu(4), "general") == 2.0
-    assert _auto_min_params_for_profile(_hw_with_gpu(6), "general") == 3.0
-    assert _auto_min_params_for_profile(_hw_with_gpu(8), "general") == 5.0
-    assert _auto_min_params_for_profile(_hw_with_gpu(12), "general") == 8.0
-    assert _auto_min_params_for_profile(_hw_with_gpu(24), "general") == 10.0
-    assert _auto_min_params_for_profile(_hw_with_gpu(32), "general") == 12.0
+
+
+    assert auto_min_params_for_profile(hw_with_gpu(4), "general") == 2.0
+    assert auto_min_params_for_profile(hw_with_gpu(6), "general") == 3.0
+    assert auto_min_params_for_profile(hw_with_gpu(8), "general") == 5.0
+    assert auto_min_params_for_profile(hw_with_gpu(12), "general") == 8.0
+    assert auto_min_params_for_profile(hw_with_gpu(24), "general") == 10.0
+    assert auto_min_params_for_profile(hw_with_gpu(32), "general") == 12.0
 
 
 def test_auto_min_params_non_general_disabled():
-    assert _auto_min_params_for_profile(_hw_with_gpu(24), "coding") is None
+    assert auto_min_params_for_profile(hw_with_gpu(24), "coding") is None
 
 
 def test_auto_min_params_uses_usable_vram_budget():
-    hw = _hw_with_gpu(20)
+    hw = hw_with_gpu(20)
     hw.gpus[0].usable_vram_bytes = int(19.0 * 1024**3)
 
-    assert _auto_min_params_for_profile(hw, "general") == 8.0
+    assert auto_min_params_for_profile(hw, "general") == 8.0
 
 
 def test_auto_min_params_uses_ram_budget_for_shared_memory_gpu():
@@ -89,13 +86,13 @@ def test_auto_min_params_uses_ram_budget_for_shared_memory_gpu():
         ram_budget_bytes=4 * 1024**3,
     )
 
-    assert _auto_min_params_for_profile(hw, "general") == 2.0
+    assert auto_min_params_for_profile(hw, "general") == 2.0
 
 
 def test_apply_gpu_overrides_accepts_multiple_simulated_gpus():
     hw = HardwareInfo(gpus=[], ram_bytes=64 * 1024**3, os="linux")
 
-    _apply_gpu_overrides(hw, cpu_only=False, gpu=["2x RTX 4090"], vram=None)
+    apply_gpu_overrides(hw, cpu_only=False, gpu=["2x RTX 4090"], vram=None)
 
     assert len(hw.gpus) == 2
     assert all(gpu.vendor == "nvidia" for gpu in hw.gpus)
@@ -103,27 +100,27 @@ def test_apply_gpu_overrides_accepts_multiple_simulated_gpus():
 
 
 def test_include_vision_candidates_by_profile():
-    assert _include_vision_candidates("vision") is True
-    assert _include_vision_candidates("any") is True
-    assert _include_vision_candidates("general") is False
-    assert _include_vision_candidates("coding") is False
+    assert include_vision_candidates("vision") is True
+    assert include_vision_candidates("any") is True
+    assert include_vision_candidates("general") is False
+    assert include_vision_candidates("coding") is False
 
 
 def test_vision_workload_for_profile_defaults_and_overrides():
-    wl = _vision_workload_for_profile("vision", context_length=8192)
+    wl = vision_workload_for_profile("vision", context_length=8192)
     assert wl is not None
     assert wl.image_count == 1
     assert wl.image_size == 448
     assert wl.context_length == 8192
 
-    custom = _vision_workload_for_profile(
+    custom = vision_workload_for_profile(
         "any", image_count=2, image_size=896, context_length=2048
     )
     assert custom is not None
     assert custom.image_count == 2
     assert custom.image_size == 896
     assert custom.context_length == 2048
-    assert _vision_workload_for_profile("general") is None
+    assert vision_workload_for_profile("general") is None
 
 
 def test_fill_missing_published_at_updates_models():
@@ -143,11 +140,11 @@ def test_fill_missing_published_at_updates_models():
         vram_available_bytes=0,
     )
 
-    async def _fake_fetch(ids: list[str]) -> dict[str, str]:
+    async def fake_fetch(ids: list[str]) -> dict[str, str]:
         assert ids == ["Qwen/Qwen3-8B-AWQ"]
         return {"Qwen/Qwen3-8B-AWQ": "2026-03-05T08:00:00.000Z"}
 
-    updated = _fill_missing_published_at([model], [result], _fake_fetch)
+    updated = fill_missing_published_at([model], [result], fake_fetch)
     assert updated is True
     assert model.published_at == "2026-03-05T08:00:00.000Z"
 
@@ -168,7 +165,7 @@ def test_format_fetch_error_uses_exception_class_when_message_is_empty():
         def __str__(self) -> str:
             return ""
 
-    assert _format_fetch_error(EmptyNetworkError()) == (
+    assert format_fetch_error(EmptyNetworkError()) == (
         "EmptyNetworkError with no detail from the network layer"
     )
 
@@ -178,16 +175,13 @@ def test_format_fetch_error_includes_status_and_url_for_empty_http_error():
     response = httpx.Response(429, request=request)
     error = httpx.HTTPStatusError("", request=request, response=response)
 
-    assert _format_fetch_error(error) == (
+    assert format_fetch_error(error) == (
         "HTTPStatusError: HTTP 429 for https://huggingface.co/api/models"
     )
 
 
 def test_merge_model_eval_benchmarks_is_now_a_noop():
-    """As of the self_reported evidence tier, _merge_model_eval_benchmarks
-    must NOT mutate external evidence. Uploader-reported hf_eval values
-    are consumed directly by the ranker as a separate, low-trust source.
-    """
+
     model_direct_missing = ModelInfo(
         id="meta-llama/Llama-3.1-8B-Instruct",
         family_id="llama-3.1-8b",
@@ -207,73 +201,72 @@ def test_merge_model_eval_benchmarks_is_now_a_noop():
         benchmark_scores={"hf_eval": 70.0},
     )
     original = {"Qwen/Qwen2.5-7B-Instruct": 71.2}
-    merged, injected = _merge_model_eval_benchmarks(
+    merged, injected = merge_model_eval_benchmarks(
         [model_direct_missing, model_already_present],
         original,
     )
-    # Function is a deprecation no-op now.
+
     assert injected == 0
     assert merged is original or merged == original
-    # Critically, the uploader-reported value MUST NOT have been injected
-    # under the model id, because doing so would make it appear as a
-    # direct external evidence hit.
+
+
     assert "meta-llama/Llama-3.1-8B-Instruct" not in merged
 
 
 def test_validate_evidence_accepts_all_modes():
-    assert _validate_evidence("strict") == "strict"
-    assert _validate_evidence("base") == "base"
-    assert _validate_evidence("any") == "any"
+    assert validate_evidence("strict") == "strict"
+    assert validate_evidence("base") == "base"
+    assert validate_evidence("any") == "any"
 
 
 def test_validate_evidence_rejects_unknown_mode():
     with pytest.raises(Exit):
-        _validate_evidence("foo")
+        validate_evidence("foo")
 
 
 def test_resolve_evidence_mode_direct_alias_wins():
-    assert _resolve_evidence_mode("base", direct=True) == "strict"
+    assert resolve_evidence_mode("base", direct=True) == "strict"
 
 
 def test_resolve_fit_filter_accepts_gpu_only_alias():
-    assert _resolve_fit_filter("any", gpu_only=False) == "any"
-    assert _resolve_fit_filter("gpu", gpu_only=False) == "full_gpu"
-    assert _resolve_fit_filter("full-gpu", gpu_only=False) == "full_gpu"
-    assert _resolve_fit_filter("full_gpu", gpu_only=False) == "full_gpu"
-    assert _resolve_fit_filter("any", gpu_only=True) == "full_gpu"
+    assert resolve_fit_filter("any", gpu_only=False) == "any"
+    assert resolve_fit_filter("gpu", gpu_only=False) == "full_gpu"
+    assert resolve_fit_filter("full-gpu", gpu_only=False) == "full_gpu"
+    assert resolve_fit_filter("full_gpu", gpu_only=False) == "full_gpu"
+    assert resolve_fit_filter("any", gpu_only=True) == "full_gpu"
 
 
 def test_resolve_fit_filter_rejects_unknown_mode():
     with pytest.raises(Exit):
-        _resolve_fit_filter("partial", gpu_only=False)
+        resolve_fit_filter("partial", gpu_only=False)
 
 
 def test_resolve_speed_filter_presets_and_min_speed_override():
-    assert _resolve_speed_filter("any", min_speed=None) is None
-    assert _resolve_speed_filter("usable", min_speed=None) == 10.0
-    assert _resolve_speed_filter("fast", min_speed=None) == 30.0
-    assert _resolve_speed_filter("fast", min_speed=2.5) == 2.5
+    assert resolve_speed_filter("any", min_speed=None) is None
+    assert resolve_speed_filter("usable", min_speed=None) == 10.0
+    assert resolve_speed_filter("fast", min_speed=None) == 30.0
+    assert resolve_speed_filter("fast", min_speed=2.5) == 2.5
 
 
 def test_resolve_speed_filter_rejects_unknown_mode():
     with pytest.raises(Exit):
-        _resolve_speed_filter("slowish", min_speed=None)
+        resolve_speed_filter("slowish", min_speed=None)
 
 
 def test_parse_memory_amount_supports_gb_mb_and_percent():
-    assert _parse_memory_amount("1.5GB", option_name="--x") == int(1.5 * 1024**3)
-    assert _parse_memory_amount("512MB", option_name="--x") == 512 * 1024**2
-    assert _parse_memory_amount("8", option_name="--x") == 8 * 1024**3
+    assert parse_memory_amount("1.5GB", option_name="--x") == int(1.5 * 1024**3)
+    assert parse_memory_amount("512MB", option_name="--x") == 512 * 1024**2
+    assert parse_memory_amount("8", option_name="--x") == 8 * 1024**3
     assert (
-        _parse_memory_amount("10%", option_name="--x", total_bytes=20 * 1024**3)
+        parse_memory_amount("10%", option_name="--x", total_bytes=20 * 1024**3)
         == 2 * 1024**3
     )
 
 
 def test_apply_memory_budgets_sets_vram_headroom_and_ram_budget():
-    hw = _hw_with_gpu(16)
+    hw = hw_with_gpu(16)
 
-    _apply_memory_budgets(hw, vram_headroom="1GB", ram_budget="8GB")
+    apply_memory_budgets(hw, vram_headroom="1GB", ram_budget="8GB")
 
     assert hw.gpus[0].vram_bytes == 16 * 1024**3
     assert hw.gpus[0].usable_vram_bytes == 15 * 1024**3
@@ -286,13 +279,13 @@ def test_apply_memory_budgets_validates_vram_headroom_without_gpus():
     hw = HardwareInfo(gpus=[], ram_bytes=16 * 1024**3)
 
     with pytest.raises(Exit):
-        _apply_memory_budgets(hw, vram_headroom="nope", ram_budget=None)
+        apply_memory_budgets(hw, vram_headroom="nope", ram_budget=None)
 
 
 def test_apply_memory_budgets_accepts_valid_noop_vram_headroom_without_gpus():
     hw = HardwareInfo(gpus=[], ram_bytes=16 * 1024**3)
 
-    _apply_memory_budgets(hw, vram_headroom="10%", ram_budget=None)
+    apply_memory_budgets(hw, vram_headroom="10%", ram_budget=None)
 
     assert hw.gpus == []
     assert hw.ram_budget_bytes is None
@@ -327,7 +320,7 @@ def test_main_passes_gpu_only_fit_filter(monkeypatch):
         ]
 
     monkeypatch.setattr(
-        "whichvlm.hardware.detector.detect_hardware", lambda: _hw_with_gpu(8)
+        "whichvlm.hardware.detector.detect_hardware", lambda: hw_with_gpu(8)
     )
     monkeypatch.setattr("whichvlm.models.cache.load_cache", lambda: [])
     monkeypatch.setattr("whichvlm.models.benchmark.load_benchmark_cache", lambda: {})
@@ -379,7 +372,7 @@ def test_main_passes_speed_preset_and_default_runtime_columns(monkeypatch):
         captured["show_status"] = kwargs.get("show_status")
 
     monkeypatch.setattr(
-        "whichvlm.hardware.detector.detect_hardware", lambda: _hw_with_gpu(8)
+        "whichvlm.hardware.detector.detect_hardware", lambda: hw_with_gpu(8)
     )
     monkeypatch.setattr("whichvlm.models.cache.load_cache", lambda: [])
     monkeypatch.setattr("whichvlm.models.benchmark.load_benchmark_cache", lambda: {})
@@ -406,7 +399,7 @@ def test_main_details_flag_restores_metadata_columns(monkeypatch):
         captured["show_status"] = kwargs.get("show_status")
 
     monkeypatch.setattr(
-        "whichvlm.hardware.detector.detect_hardware", lambda: _hw_with_gpu(8)
+        "whichvlm.hardware.detector.detect_hardware", lambda: hw_with_gpu(8)
     )
     monkeypatch.setattr("whichvlm.models.cache.load_cache", lambda: [])
     monkeypatch.setattr("whichvlm.models.benchmark.load_benchmark_cache", lambda: {})
@@ -456,7 +449,7 @@ def test_main_markdown_alias_dispatches_markdown_output(monkeypatch):
         raise AssertionError("markdown output should not render Rich hardware panel")
 
     monkeypatch.setattr(
-        "whichvlm.hardware.detector.detect_hardware", lambda: _hw_with_gpu(8)
+        "whichvlm.hardware.detector.detect_hardware", lambda: hw_with_gpu(8)
     )
     monkeypatch.setattr("whichvlm.models.cache.load_cache", lambda: [])
     monkeypatch.setattr("whichvlm.models.benchmark.load_benchmark_cache", lambda: {})
@@ -492,7 +485,7 @@ def test_main_empty_gpu_only_result_shows_fit_message(monkeypatch):
         captured["empty_message"] = kwargs.get("empty_message")
 
     monkeypatch.setattr(
-        "whichvlm.hardware.detector.detect_hardware", lambda: _hw_with_gpu(8)
+        "whichvlm.hardware.detector.detect_hardware", lambda: hw_with_gpu(8)
     )
     monkeypatch.setattr("whichvlm.models.cache.load_cache", lambda: [])
     monkeypatch.setattr("whichvlm.models.benchmark.load_benchmark_cache", lambda: {})
@@ -540,7 +533,7 @@ def test_main_json_smoke_profile_vision(monkeypatch):
         captured["json_results"] = results
 
     monkeypatch.setattr(
-        "whichvlm.hardware.detector.detect_hardware", lambda: _hw_with_gpu(8)
+        "whichvlm.hardware.detector.detect_hardware", lambda: hw_with_gpu(8)
     )
     monkeypatch.setattr("whichvlm.models.cache.load_cache", lambda: [])
     monkeypatch.setattr("whichvlm.models.benchmark.load_benchmark_cache", lambda: {})
@@ -566,7 +559,7 @@ def test_hardware_command_smoke(monkeypatch):
         captured["hardware"] = hw
 
     monkeypatch.setattr(
-        "whichvlm.hardware.detector.detect_hardware", lambda: _hw_with_gpu(8)
+        "whichvlm.hardware.detector.detect_hardware", lambda: hw_with_gpu(8)
     )
     monkeypatch.setattr("whichvlm.output.display.display_hardware", fake_display_hardware)
 
@@ -598,9 +591,6 @@ def test_hardware_command_simulated_apple_silicon(monkeypatch):
     assert has_backend(gpu, "mlx")
 
 
-# --------------- plan command tests ---------------
-
-
 def test_plan_no_model_found_shows_error(monkeypatch):
     monkeypatch.setattr("whichvlm.models.cache.load_cache", lambda: [])
     runner = CliRunner()
@@ -628,7 +618,7 @@ def test_plan_display_plan_renders_tables():
         likes=10,
     )
     buf = StringIO()
-    import whichvlm.output._console as console_mod
+    import whichvlm.output.console as console_mod
 
     orig_console = console_mod.console
     console_mod.console = Console(file=buf, force_terminal=False, width=120)
@@ -645,7 +635,7 @@ def test_plan_display_plan_renders_tables():
 
 
 def test_plan_display_plan_json_outputs_valid_json():
-    """display_plan_json should output valid JSON."""
+
     import json as json_mod
     from io import StringIO
 
@@ -664,9 +654,9 @@ def test_plan_display_plan_json_outputs_valid_json():
         downloads=100,
         likes=10,
     )
-    # Capture output
+
     buf = StringIO()
-    import whichvlm.output._console as console_mod
+    import whichvlm.output.console as console_mod
 
     orig_console = console_mod.console
     console_mod.console = Console(file=buf, force_terminal=False)
@@ -682,10 +672,7 @@ def test_plan_display_plan_json_outputs_valid_json():
     assert data["target_quant"] == "Q4_K_M"
 
 
-# --------------- helper tests ---------------
-
-
-def _make_model(model_id="org/Test-7B-GGUF", downloads=100, gguf_variants=None):
+def make_model(model_id="org/Test-7B-GGUF", downloads=100, gguf_variants=None):
     return ModelInfo(
         id=model_id,
         family_id="test-7b",
@@ -698,27 +685,27 @@ def _make_model(model_id="org/Test-7B-GGUF", downloads=100, gguf_variants=None):
 
 
 def test_search_model_exact_match():
-    models = [_make_model("org/Llama-8B"), _make_model("org/Qwen-7B")]
-    result = _search_model(models, "org/Llama-8B")
+    models = [make_model("org/Llama-8B"), make_model("org/Qwen-7B")]
+    result = resolve_model_match(models, "org/Llama-8B")
     assert result.id == "org/Llama-8B"
 
 
 def test_search_model_endswith_match():
-    models = [_make_model("org/Llama-8B"), _make_model("org/Qwen-7B")]
-    result = _search_model(models, "Llama-8B")
+    models = [make_model("org/Llama-8B"), make_model("org/Qwen-7B")]
+    result = resolve_model_match(models, "Llama-8B")
     assert result.id == "org/Llama-8B"
 
 
 def test_search_model_term_match():
-    models = [_make_model("org/Llama-3.1-8B-GGUF"), _make_model("org/Qwen-7B")]
-    result = _search_model(models, "llama 8b")
+    models = [make_model("org/Llama-3.1-8B-GGUF"), make_model("org/Qwen-7B")]
+    result = resolve_model_match(models, "llama 8b")
     assert result.id == "org/Llama-3.1-8B-GGUF"
 
 
 def test_search_model_not_found():
-    models = [_make_model("org/Llama-8B")]
+    models = [make_model("org/Llama-8B")]
     with pytest.raises(Exit):
-        _search_model(models, "nonexistent_xyz")
+        resolve_model_match(models, "nonexistent_xyz")
 
 
 def test_pick_gguf_variant_by_preference():
@@ -726,8 +713,8 @@ def test_pick_gguf_variant_by_preference():
         GGUFVariant(filename="q2.gguf", quant_type="Q2_K", file_size_bytes=1000),
         GGUFVariant(filename="q4km.gguf", quant_type="Q4_K_M", file_size_bytes=2000),
     ]
-    model = _make_model(gguf_variants=variants)
-    result = _pick_gguf_variant(model)
+    model = make_model(gguf_variants=variants)
+    result = select_gguf_variant(model)
     assert result.quant_type == "Q4_K_M"
 
 
@@ -736,14 +723,14 @@ def test_pick_gguf_variant_with_filter():
         GGUFVariant(filename="q2.gguf", quant_type="Q2_K", file_size_bytes=1000),
         GGUFVariant(filename="q4km.gguf", quant_type="Q4_K_M", file_size_bytes=2000),
     ]
-    model = _make_model(gguf_variants=variants)
-    result = _pick_gguf_variant(model, quant_filter="Q2_K")
+    model = make_model(gguf_variants=variants)
+    result = select_gguf_variant(model, quant_filter="Q2_K")
     assert result.quant_type == "Q2_K"
 
 
 def test_pick_gguf_variant_no_variants():
-    model = _make_model(gguf_variants=[])
-    result = _pick_gguf_variant(model)
+    model = make_model(gguf_variants=[])
+    result = select_gguf_variant(model)
     assert result is None
 
 
@@ -776,7 +763,7 @@ def test_resolve_ranked_synthetic_gguf_to_real_repo():
         file_size_bytes=16_000_000_000,
     )
 
-    resolved = _resolve_ranked_gguf_for_run(selected, synthetic, [selected, real_gguf])
+    resolved = resolve_ranked_gguf_for_run(selected, synthetic, [selected, real_gguf])
 
     assert resolved is not None
     model, variant = resolved
@@ -825,7 +812,7 @@ def test_resolve_ranked_synthetic_gguf_prefers_exact_quant():
         file_size_bytes=16_000_000_000,
     )
 
-    resolved = _resolve_ranked_gguf_for_run(
+    resolved = resolve_ranked_gguf_for_run(
         selected,
         synthetic,
         [selected, q5_only, q4_match],
@@ -864,7 +851,7 @@ def test_resolve_ranked_synthetic_gguf_rejects_quant_mismatch():
         file_size_bytes=16_000_000_000,
     )
 
-    resolved = _resolve_ranked_gguf_for_run(selected, synthetic, [selected, q5_only])
+    resolved = resolve_ranked_gguf_for_run(selected, synthetic, [selected, q5_only])
 
     assert resolved is None
 
@@ -896,7 +883,7 @@ def test_resolve_ranked_synthetic_gguf_without_real_repo_returns_none():
     )
 
     assert (
-        _resolve_ranked_gguf_for_run(selected, synthetic, [selected, unrelated]) is None
+        resolve_ranked_gguf_for_run(selected, synthetic, [selected, unrelated]) is None
     )
 
 
@@ -926,17 +913,14 @@ def test_resolve_ranked_synthetic_gguf_rejects_size_mismatch():
         file_size_bytes=90_000_000_000,
     )
 
-    resolved = _resolve_ranked_gguf_for_run(selected, synthetic, [selected, mtp_head])
+    resolved = resolve_ranked_gguf_for_run(selected, synthetic, [selected, mtp_head])
 
     assert resolved is None
 
 
-# --------------- run/snippet command tests ---------------
-
-
 def test_run_reports_missing_model(monkeypatch):
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/uv")
-    monkeypatch.setattr(cli_mod, "_load_models", lambda refresh: [])
+    monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [])
 
     runner = CliRunner()
     result = runner.invoke(app, ["run", "some-model"])
@@ -946,7 +930,7 @@ def test_run_reports_missing_model(monkeypatch):
 
 
 def test_transformers_chat_script_passes_tokenizer_mapping_to_generate():
-    model = _make_model(model_id="org/Test-7B")
+    model = make_model(model_id="org/Test-7B")
 
     script = generate_run_script(
         model, variant=None, context_length=4096, cpu_only=False
@@ -958,7 +942,7 @@ def test_transformers_chat_script_passes_tokenizer_mapping_to_generate():
 
 
 def test_transformers_chat_script_provides_disk_offload_folder():
-    model = _make_model(model_id="org/Test-7B")
+    model = make_model(model_id="org/Test-7B")
 
     script = generate_run_script(
         model, variant=None, context_length=4096, cpu_only=False
@@ -1025,9 +1009,11 @@ def test_run_auto_pick_resolves_ranked_gguf_before_launch(monkeypatch):
         return Completed()
 
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/uv")
-    monkeypatch.setattr(cli_mod, "_load_models", lambda refresh: [selected, real_gguf])
     monkeypatch.setattr(
-        "whichvlm.hardware.detector.detect_hardware", lambda: _hw_with_gpu(8)
+        cli_mod, "load_model_catalog", lambda refresh: [selected, real_gguf]
+    )
+    monkeypatch.setattr(
+        "whichvlm.hardware.detector.detect_hardware", lambda: hw_with_gpu(8)
     )
     monkeypatch.setattr("whichvlm.models.benchmark.load_benchmark_cache", lambda: {})
     monkeypatch.setattr("whichvlm.engine.ranker.rank_models", fake_rank_models)
@@ -1054,7 +1040,7 @@ def test_run_vlm_requires_image(monkeypatch):
     )
 
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/uv")
-    monkeypatch.setattr(cli_mod, "_load_models", lambda refresh: [model])
+    monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [model])
 
     result = CliRunner().invoke(app, ["run", "org/Test-VL-7B"])
 
@@ -1063,7 +1049,7 @@ def test_run_vlm_requires_image(monkeypatch):
 
 
 def test_snippet_no_model_found(monkeypatch):
-    monkeypatch.setattr(cli_mod, "_load_models", lambda refresh: [])
+    monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [])
     runner = CliRunner()
     result = runner.invoke(app, ["snippet", "nonexistent_model_xyz_999"])
     assert result.exit_code != 0
@@ -1071,7 +1057,7 @@ def test_snippet_no_model_found(monkeypatch):
 
 
 def test_json_output_includes_benchmark_source_and_confidence():
-    """display_json should include benchmark_source and benchmark_confidence."""
+
     import json as json_mod
     from io import StringIO
 
@@ -1121,7 +1107,7 @@ def test_json_output_includes_benchmark_source_and_confidence():
     )
 
     buf = StringIO()
-    import whichvlm.output._console as console_mod
+    import whichvlm.output.console as console_mod
 
     orig_console = console_mod.console
     console_mod.console = Console(file=buf, force_terminal=False)

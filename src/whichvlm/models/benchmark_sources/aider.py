@@ -1,11 +1,3 @@
-"""Coding-oriented benchmark source.
-
-This source ranks models by multi-language code editing outcomes. The raw YAML
-payload is stable enough that it can be parsed with a compact regex extractor.
-It is primarily used for coding-focused ranking and contributes a small bonus
-in general ranking as a secondary signal.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -22,10 +14,9 @@ AIDER_POLYGLOT_YML_URL = (
     "aider/website/_data/polyglot_leaderboard.yml"
 )
 
-# Polyglot pass-rate is 0-100 (percent of exercises passing). Treat the
-# floor/ceiling as 0..90 since the cap of practical models is ~88%.
-_PG_MIN = 0.0
-_PG_MAX = 90.0
+
+PG_MIN = 0.0
+PG_MAX = 90.0
 
 AIDER_NAME_TO_HF_IDS: dict[str, list[str]] = {
     "deepseek-r1": ["deepseek-ai/DeepSeek-R1"],
@@ -59,31 +50,22 @@ AIDER_NAME_TO_HF_IDS: dict[str, list[str]] = {
 }
 
 
-_PASS_RATE_RE = re.compile(r"pass_rate[_-]?2[:\s]+(\d+(?:\.\d+)?)", re.IGNORECASE)
-_MODEL_RE = re.compile(r"^- model[:\s]+(.+)$", re.MULTILINE)
+PASS_RATE_RE = re.compile(r"pass_rate[_-]?2[:\s]+(\d+(?:\.\d+)?)", re.IGNORECASE)
+MODEL_RE = re.compile(r"^- model[:\s]+(.+)$", re.MULTILINE)
 
 
-def _normalize(pass_rate: float) -> float:
+def normalize(pass_rate: float) -> float:
     if not isinstance(pass_rate, (int, float)):
         return 0.0
-    span = _PG_MAX - _PG_MIN
-    normalized = (pass_rate - _PG_MIN) / span * 100.0
+    span = PG_MAX - PG_MIN
+    normalized = (pass_rate - PG_MIN) / span * 100.0
     return max(0.0, min(100.0, round(normalized, 1)))
 
 
-def _parse_yaml_lite(text: str) -> list[tuple[str, float]]:
-    """Tiny YAML extractor for the polyglot leaderboard format.
+def parse_yaml_lite(text: str) -> list[tuple[str, float]]:
 
-    We avoid pulling in PyYAML; the file shape is stable enough that two
-    regexes scanning each record block suffice. Each record looks like:
-        - dirname: 2024-12-22-blah
-          model: deepseek/deepseek-chat
-          edit_format: diff
-          pass_rate_2: 80.7
-          ...
-    """
     out: list[tuple[str, float]] = []
-    # Split into records starting with "- "
+
     records = re.split(r"\n(?=-\s+\w)", text)
     for rec in records:
         m_model = re.search(r"^\s*model[:\s]+(.+?)$", rec, re.MULTILINE | re.IGNORECASE)
@@ -91,7 +73,7 @@ def _parse_yaml_lite(text: str) -> list[tuple[str, float]]:
         if not m_model or not m_rate:
             continue
         name = m_model.group(1).strip().strip("\"'")
-        # Strip any provider prefix like "deepseek/" or "openrouter/"
+
         name = name.split("/", 1)[-1].strip().lower()
         try:
             rate = float(m_rate.group(1))
@@ -104,11 +86,11 @@ def _parse_yaml_lite(text: str) -> list[tuple[str, float]]:
 
 
 async def fetch_aider_polyglot_scores(client: httpx.AsyncClient) -> dict[str, float]:
-    """Fetch coding benchmark pass rates. Raises on HTTP / parse failure."""
+
     scores: dict[str, float] = {}
     resp = await get_with_retries(client, AIDER_POLYGLOT_YML_URL)
     resp.raise_for_status()
-    pairs = _parse_yaml_lite(resp.text)
+    pairs = parse_yaml_lite(resp.text)
     if not pairs:
         logger.debug("Coding benchmark: 0 records parsed")
         return {}
@@ -121,7 +103,7 @@ async def fetch_aider_polyglot_scores(client: httpx.AsyncClient) -> dict[str, fl
         ids = AIDER_NAME_TO_HF_IDS.get(name)
         if not ids:
             continue
-        normalized = _normalize(rate)
+        normalized = normalize(rate)
         if normalized <= 0:
             continue
         for hf_id in ids:

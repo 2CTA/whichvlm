@@ -1,5 +1,3 @@
-"""Tests for output formatting helpers."""
-
 from whichvlm.engine.types import CompatibilityResult
 from whichvlm.models.types import ModelInfo
 from whichvlm.output.formatting import format_speed

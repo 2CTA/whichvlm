@@ -19,7 +19,7 @@ async def get_with_retries(
     retry_status_codes: set[int] | None = None,
     **kwargs,
 ) -> httpx.Response:
-    """GET with bounded retry/backoff for transient HTTP failures."""
+
     retry_codes = retry_status_codes or RETRYABLE_STATUS_CODES
     last_attempt = max(1, attempts) - 1
 

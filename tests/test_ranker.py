@@ -1,12 +1,10 @@
-"""Tests for ranking behavior."""
-
 from whichvlm.engine.quantization import effective_quant_type
-from whichvlm.engine.ranker import _partial_offload_quality_factor, rank_models
+from whichvlm.engine.ranker import partial_offload_quality_factor, rank_models
 from whichvlm.hardware.types import BackendCapability, GPUInfo, HardwareInfo
 from whichvlm.models.types import GGUFVariant, ModelArtifact, ModelInfo
 
 
-def _make_hardware(
+def make_hardware(
     vram_gb: int = 24,
     bandwidth_gbps: float = 80.0,
     vendor: str = "nvidia",
@@ -36,9 +34,8 @@ def _make_hardware(
 
 
 def test_ranker_picks_highest_scoring_variant():
-    # On a fast GPU (≥800 GB/s) both quants run well above the comfort
-    # threshold, so the F16 quality bonus dominates and F16 wins. On a slow
-    # GPU the speed gap flips the choice — that's exercised separately.
+
+
     model = ModelInfo(
         id="org/Test-8B-GGUF",
         family_id="org/Test-8B-GGUF",
@@ -59,7 +56,7 @@ def test_ranker_picks_highest_scoring_variant():
             ),
         ],
     )
-    hw = _make_hardware(bandwidth_gbps=900.0)
+    hw = make_hardware(bandwidth_gbps=900.0)
     results = rank_models(
         [model],
         hw,
@@ -80,7 +77,7 @@ def test_quant_filter_applies_to_non_gguf_models():
         downloads=1000,
         likes=100,
     )
-    hw = _make_hardware(vram_gb=24, bandwidth_gbps=300.0)
+    hw = make_hardware(vram_gb=24, bandwidth_gbps=300.0)
 
     awq_only = rank_models([model], hw, top_n=5, quant_filter="AWQ")
     q4_only = rank_models([model], hw, top_n=5, quant_filter="Q4_K_M")
@@ -98,14 +95,14 @@ def test_quant_filter_matches_mxfp4_non_gguf_model():
         downloads=1000,
         likes=100,
     )
-    # Linux + NVIDIA: non-GGUF formats are runnable, so the filter resolves.
-    hw = _make_hardware(vram_gb=24, bandwidth_gbps=900.0)
+
+    hw = make_hardware(vram_gb=24, bandwidth_gbps=900.0)
 
     mxfp4_only = rank_models([model], hw, top_n=5, quant_filter="MXFP4")
     nvfp4_only = rank_models([model], hw, top_n=5, quant_filter="NVFP4")
 
     assert len(mxfp4_only) == 1
-    # The label surfaced in the output table (display.py uses the same call).
+
     assert (
         effective_quant_type(mxfp4_only[0].model, mxfp4_only[0].gguf_variant) == "MXFP4"
     )
@@ -121,7 +118,7 @@ def test_darwin_backend_filters_out_fp4_non_gguf_models():
         downloads=1000,
         likes=100,
     )
-    hw = _make_hardware(
+    hw = make_hardware(
         vram_gb=64, bandwidth_gbps=400.0, vendor="apple", os_name="darwin"
     )
     results = rank_models([mxfp4_model], hw, top_n=10)
@@ -152,7 +149,7 @@ def test_darwin_backend_filters_out_non_gguf_models():
             ),
         ],
     )
-    hw = _make_hardware(
+    hw = make_hardware(
         vram_gb=16, bandwidth_gbps=200.0, vendor="apple", os_name="darwin"
     )
     results = rank_models([awq_model, gguf_model], hw, top_n=10)
@@ -184,7 +181,7 @@ def test_cpu_only_backend_filters_out_non_gguf_models():
             ),
         ],
     )
-    hw = _make_hardware(with_gpu=False, os_name="linux")
+    hw = make_hardware(with_gpu=False, os_name="linux")
     results = rank_models([awq_model, gguf_model], hw, top_n=10)
     assert len(results) == 1
     assert results[0].model.id == "Qwen/Qwen3-8B-GGUF"
@@ -295,7 +292,7 @@ def test_popularity_has_no_effect_with_direct_benchmark():
             ),
         ],
     )
-    hw = _make_hardware()
+    hw = make_hardware()
     results = rank_models(
         [model_low_pop, model_high_pop],
         hw,
@@ -340,7 +337,7 @@ def test_general_profile_excludes_specialized_models():
             ),
         ],
     )
-    hw = _make_hardware()
+    hw = make_hardware()
     results = rank_models(
         [general_model, coding_model],
         hw,
@@ -386,14 +383,14 @@ def test_require_direct_top_prioritizes_direct_benchmark():
             ),
         ],
     )
-    hw = _make_hardware()
+    hw = make_hardware()
     results = rank_models(
         [direct_model, estimated_model],
         hw,
         top_n=10,
         benchmark_scores={
             "Qwen/direct-7b": 65.0,
-            # Only the Qwen3 line score is present, so Qwen/estimated-7b inherits it.
+
             "Qwen/Qwen3-32B": 80.0,
         },
         task_profile="any",
@@ -434,7 +431,7 @@ def test_min_params_filter_excludes_small_models():
             ),
         ],
     )
-    hw = _make_hardware()
+    hw = make_hardware()
     results = rank_models(
         [small, large],
         hw,
@@ -451,8 +448,8 @@ def test_min_params_filter_excludes_small_models():
 
 
 def test_general_profile_prefers_full_gpu_when_direct_is_partial():
-    # Direct-evidence model that won't fit on 8GB even after Q4_K_M synthesis
-    # (72B * 0.56 ≈ 40GB → partial_offload).
+
+
     partial_direct = ModelInfo(
         id="Qwen/Qwen2.5-72B-Instruct",
         family_id="qwen2.5-72b",
@@ -469,14 +466,14 @@ def test_general_profile_prefers_full_gpu_when_direct_is_partial():
         downloads=1000,
         likes=100,
     )
-    hw = _make_hardware(vram_gb=8, bandwidth_gbps=272.0)
+    hw = make_hardware(vram_gb=8, bandwidth_gbps=272.0)
     results = rank_models(
         [partial_direct, full_gpu_estimated],
         hw,
         top_n=10,
         benchmark_scores={
-            "Qwen/Qwen2.5-72B-Instruct": 80.0,  # direct
-            "Qwen/Qwen3-32B": 85.0,  # line inherited for Qwen3-9B
+            "Qwen/Qwen2.5-72B-Instruct": 80.0,
+            "Qwen/Qwen3-32B": 85.0,
         },
         task_profile="general",
         require_direct_top=True,
@@ -487,7 +484,7 @@ def test_general_profile_prefers_full_gpu_when_direct_is_partial():
 
 
 def test_family_dedup_prefers_direct_when_enabled():
-    # Within one family and equivalent fit, direct evidence wins.
+
     direct_base = ModelInfo(
         id="Qwen/Qwen2.5-7B-Instruct",
         family_id="qwen2.5-7b",
@@ -511,7 +508,7 @@ def test_family_dedup_prefers_direct_when_enabled():
             ),
         ],
     )
-    hw = _make_hardware(vram_gb=16, bandwidth_gbps=272.0)
+    hw = make_hardware(vram_gb=16, bandwidth_gbps=272.0)
     results = rank_models(
         [direct_base, estimated_variant],
         hw,
@@ -527,8 +524,8 @@ def test_family_dedup_prefers_direct_when_enabled():
 
 
 def test_full_gpu_estimated_ranks_above_partial_direct():
-    # Use 72B model so Q4_K_M synthesis still doesn't fit 8GB — preserves the
-    # "direct evidence, but model is too big" half of this scenario.
+
+
     partial_direct = ModelInfo(
         id="Qwen/Qwen2.5-72B-Instruct",
         family_id="qwen2.5-72b",
@@ -545,23 +542,21 @@ def test_full_gpu_estimated_ranks_above_partial_direct():
         downloads=1000,
         likes=100,
     )
-    hw = _make_hardware(vram_gb=8, bandwidth_gbps=272.0)
+    hw = make_hardware(vram_gb=8, bandwidth_gbps=272.0)
     results = rank_models(
         [partial_direct, full_gpu_estimated],
         hw,
         top_n=10,
         benchmark_scores={
-            "Qwen/Qwen2.5-72B-Instruct": 75.0,  # direct but partial
-            "Qwen/Qwen3-32B": 85.0,  # estimated but full gpu
+            "Qwen/Qwen2.5-72B-Instruct": 75.0,
+            "Qwen/Qwen3-32B": 85.0,
         },
         task_profile="general",
         require_direct_top=True,
         min_params_b=7.0,
     )
-    # The full-GPU candidate must always win over a partial-offload one of
-    # comparable quality. The partial 72B may or may not be retained
-    # depending on whether its sub-2 t/s estimate trips the speed floor —
-    # either way the full-GPU 8B should be #1.
+
+
     assert results
     assert results[0].fit_type == "full_gpu"
     assert results[0].model.id == "Qwen/Qwen3-8B-AWQ"
@@ -686,8 +681,8 @@ def test_moe_partial_offload_penalty_uses_active_working_set():
         is_moe=True,
     )
 
-    assert _partial_offload_quality_factor(dense, 0.80) == 0.42
-    assert _partial_offload_quality_factor(moe, 0.80) >= 0.66
+    assert partial_offload_quality_factor(dense, 0.80) == 0.42
+    assert partial_offload_quality_factor(moe, 0.80) >= 0.66
 
 
 def test_evidence_strict_filters_out_estimated_models():
@@ -721,14 +716,14 @@ def test_evidence_strict_filters_out_estimated_models():
             ),
         ],
     )
-    hw = _make_hardware(vram_gb=24, bandwidth_gbps=300.0)
+    hw = make_hardware(vram_gb=24, bandwidth_gbps=300.0)
     results = rank_models(
         [direct_model, estimated_model],
         hw,
         top_n=10,
         benchmark_scores={
             "Qwen/Qwen2.5-7B-Instruct": 70.0,
-            "Qwen/Qwen3-32B-Instruct": 85.0,  # Qwen3-14B inherits this line estimate.
+            "Qwen/Qwen3-32B-Instruct": 85.0,
         },
         task_profile="any",
         evidence_filter="strict",
@@ -771,7 +766,7 @@ def test_evidence_base_keeps_base_model_match_and_drops_line_interp():
             ),
         ],
     )
-    hw = _make_hardware(vram_gb=24, bandwidth_gbps=300.0)
+    hw = make_hardware(vram_gb=24, bandwidth_gbps=300.0)
     results = rank_models(
         [direct_model, base_match_model, line_interp_model],
         hw,
@@ -905,7 +900,7 @@ def test_fit_filter_full_gpu_excludes_partial_offload_and_cpu_only():
             )
         ],
     )
-    hw = _make_hardware(vram_gb=8, bandwidth_gbps=300.0)
+    hw = make_hardware(vram_gb=8, bandwidth_gbps=300.0)
     results = rank_models(
         [partial, full, cpu_only],
         hw,
@@ -935,7 +930,7 @@ def test_fit_filter_full_gpu_returns_empty_when_no_full_gpu_candidate():
             )
         ],
     )
-    hw = _make_hardware(vram_gb=8, bandwidth_gbps=300.0)
+    hw = make_hardware(vram_gb=8, bandwidth_gbps=300.0)
     results = rank_models(
         [partial],
         hw,
@@ -1028,7 +1023,7 @@ def test_benchmark_source_and_confidence_exposed_for_direct():
             ),
         ],
     )
-    hw = _make_hardware()
+    hw = make_hardware()
     results = rank_models(
         [model],
         hw,
@@ -1058,7 +1053,7 @@ def test_benchmark_source_and_confidence_exposed_for_estimated():
             ),
         ],
     )
-    hw = _make_hardware()
+    hw = make_hardware()
     results = rank_models(
         [model],
         hw,
@@ -1089,7 +1084,7 @@ def test_benchmark_source_and_confidence_exposed_for_self_reported():
             ),
         ],
     )
-    hw = _make_hardware()
+    hw = make_hardware()
     results = rank_models(
         [model],
         hw,
@@ -1119,7 +1114,7 @@ def test_benchmark_source_and_confidence_exposed_for_none():
             ),
         ],
     )
-    hw = _make_hardware()
+    hw = make_hardware()
     results = rank_models(
         [model],
         hw,
@@ -1172,7 +1167,7 @@ def test_ctx_penalty_demotes_non_fitting():
         "org/LongCtx-8B": 74.0,
         "org/ShortCtx-8B": 76.0,
     }
-    hw = _make_hardware(bandwidth_gbps=900.0)
+    hw = make_hardware(bandwidth_gbps=900.0)
 
     results = rank_models(
         models,

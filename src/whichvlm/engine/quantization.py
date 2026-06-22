@@ -1,5 +1,3 @@
-"""Quantization helpers shared across ranking and estimators."""
-
 from __future__ import annotations
 
 import re
@@ -7,12 +5,12 @@ import re
 from whichvlm.constants import QUANT_QUALITY_PENALTY
 from whichvlm.models.types import GGUFVariant, ModelInfo
 
-# Non-GGUF quantization inferred from repo names.
-_NON_GGUF_PATTERNS: list[tuple[str, str]] = [
+
+NON_GGUF_PATTERNS: list[tuple[str, str]] = [
     (r"(^|[-_/])awq($|[-_/])", "AWQ"),
     (r"(^|[-_/])gptq($|[-_/])", "GPTQ"),
-    # 4-bit microscaling float formats. Anchored so they only match a distinct
-    # repo-name token, never a substring of an unrelated id.
+
+
     (r"(^|[-_/])mxfp4($|[-_/])", "MXFP4"),
     (r"(^|[-_/])nvfp4($|[-_/])", "NVFP4"),
     (r"(bnb[-_/]?4bit|nf4|int4|4bit)", "BNB_4BIT"),
@@ -22,8 +20,8 @@ _NON_GGUF_PATTERNS: list[tuple[str, str]] = [
     (r"(^|[-_/])(fp16|f16)($|[-_/])", "FP16"),
 ]
 
-# Non-GGUF byte-per-weight estimates.
-_NON_GGUF_BYTES_PER_WEIGHT: dict[str, float] = {
+
+NON_GGUF_BYTES_PER_WEIGHT: dict[str, float] = {
     "AWQ": 0.5,
     "GPTQ": 0.5,
     "BNB_4BIT": 0.5,
@@ -35,8 +33,8 @@ _NON_GGUF_BYTES_PER_WEIGHT: dict[str, float] = {
     "FP16": 2.0,
 }
 
-# Non-GGUF quality penalties.
-_NON_GGUF_QUALITY_PENALTY: dict[str, float] = {
+
+NON_GGUF_QUALITY_PENALTY: dict[str, float] = {
     "AWQ": 0.05,
     "GPTQ": 0.05,
     "BNB_4BIT": 0.07,
@@ -51,7 +49,7 @@ _NON_GGUF_QUALITY_PENALTY: dict[str, float] = {
 
 def infer_non_gguf_quant_type(model_id: str) -> str:
     lower = model_id.lower()
-    for pattern, quant_type in _NON_GGUF_PATTERNS:
+    for pattern, quant_type in NON_GGUF_PATTERNS:
         if re.search(pattern, lower):
             return quant_type
     return "FP16"
@@ -63,8 +61,8 @@ def effective_quant_type(model: ModelInfo, variant: GGUFVariant | None) -> str:
     return infer_non_gguf_quant_type(model.id)
 
 
-def _bytes_per_weight(quant_type: str) -> float:
-    return _NON_GGUF_BYTES_PER_WEIGHT.get(quant_type.upper(), 2.0)
+def bytes_per_weight(quant_type: str) -> float:
+    return NON_GGUF_BYTES_PER_WEIGHT.get(quant_type.upper(), 2.0)
 
 
 def estimate_weight_bytes(model: ModelInfo, variant: GGUFVariant | None) -> int:
@@ -81,19 +79,19 @@ def estimate_weight_bytes(model: ModelInfo, variant: GGUFVariant | None) -> int:
                 continue
             known_params += component.parameter_count
             component_quant = component.quantization or quant_type
-            component_bytes += component.parameter_count * _bytes_per_weight(
+            component_bytes += component.parameter_count * bytes_per_weight(
                 component_quant
             )
         if known_params > 0:
             remaining = max(0, model.parameter_count - known_params)
-            component_bytes += remaining * _bytes_per_weight(quant_type)
+            component_bytes += remaining * bytes_per_weight(quant_type)
             return int(component_bytes)
 
-    return int(model.parameter_count * _bytes_per_weight(quant_type))
+    return int(model.parameter_count * bytes_per_weight(quant_type))
 
 
 def quant_quality_penalty(model: ModelInfo, variant: GGUFVariant | None) -> float:
     quant_type = effective_quant_type(model, variant).upper()
     if quant_type in QUANT_QUALITY_PENALTY:
         return QUANT_QUALITY_PENALTY[quant_type]
-    return _NON_GGUF_QUALITY_PENALTY.get(quant_type, 0.05)
+    return NON_GGUF_QUALITY_PENALTY.get(quant_type, 0.05)

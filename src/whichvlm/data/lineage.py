@@ -1,15 +1,3 @@
-"""Model lineage / generation half-order used to bonus or penalize family versions."""
-
-# Generation lineage half-order.
-# For each "family stem" we encode a monotone-increasing version map so that
-# the ranker can apply a small bonus/penalty depending on whether a model
-# represents the newest generation of its family. This avoids the situation
-# where an older series with stale historical benchmark data ranks above a
-# newer release with little or no current public benchmark coverage.
-#
-# Each entry is a list of (regex_pattern, generation_index) tuples evaluated
-# in order; first match wins. Patterns match against lowercased model_id.
-# Higher index = newer.
 MODEL_LINEAGE_VERSIONS: dict[str, list[tuple[str, int]]] = {
     "qwen_vl": [
         (r"qwen3[-_.]?vl", 5),
@@ -56,7 +44,7 @@ MODEL_LINEAGE_VERSIONS: dict[str, list[tuple[str, int]]] = {
         (r"chatglm.*vision", 1),
     ],
     "qwen": [
-        # ordered newest -> oldest so the bonus reflects the strongest claim
+
         (r"qwen3\.6", 7),
         (r"qwen3\.5", 6),
         (r"qwen3-next", 6),
@@ -92,8 +80,8 @@ MODEL_LINEAGE_VERSIONS: dict[str, list[tuple[str, int]]] = {
         (r"deepseek-coder(?!-v2)", 1),
     ],
     "gemma": [
-        # Avoid reading the "gemma" segment inside T5Gemma ids as a Gemma
-        # generation. T5Gemma is handled by the "t5" family instead.
+
+
         (r"(?<!t5)(?<!t5[-_])gemma-?4", 4),
         (r"(?<!t5)(?<!t5[-_])gemma-?3", 3),
         (r"(?<!t5)(?<!t5[-_])gemma-?2", 2),
@@ -177,27 +165,22 @@ MODEL_LINEAGE_VERSIONS: dict[str, list[tuple[str, int]]] = {
         (r"yi-(6b|9b|34b)(?!.*1\.5)", 1),
     ],
     "t5": [
-        # Encoder-decoder T5 family, ordered newest -> oldest. The bare "t5"
-        # fallback is boundary-guarded because "t5" is a collision-prone
-        # substring (e.g. "gpt5"); every named variant is matched before it.
-        (r"t5[-_]?gemma", 5),  # T5Gemma (2025) — Gemma-adapted encoder-decoder
-        (r"flan-?t5", 4),  # Flan-T5 instruction-tuned (2022)
-        (r"flan-?ul2", 4),  # Flan-UL2 (2023)
-        (r"codet5p", 3),  # CodeT5+ (2023); before codet5 since it's a superset
-        (r"ul2", 3),  # UL2 (2022)
-        (r"code-?t5", 2),  # CodeT5 (2021)
-        (r"long-?t5", 2),  # LongT5 (2021)
-        (r"byt5", 2),  # ByT5 byte-level (2021)
-        (r"mt5", 2),  # mT5 multilingual (2020)
-        (r"t5-?v1[._]1", 2),  # T5 v1.1 / LM-adapted (2020)
-        (r"(?<![a-z0-9])t5(?![a-z])", 1),  # original T5 (2019)
+
+
+        (r"t5[-_]?gemma", 5),
+        (r"flan-?t5", 4),
+        (r"flan-?ul2", 4),
+        (r"codet5p", 3),
+        (r"ul2", 3),
+        (r"code-?t5", 2),
+        (r"long-?t5", 2),
+        (r"byt5", 2),
+        (r"mt5", 2),
+        (r"t5-?v1[._]1", 2),
+        (r"(?<![a-z0-9])t5(?![a-z])", 1),
     ],
 }
 
-# Maximum bonus (in raw quality-score points) applied to the newest generation
-# of a recognized family. The bonus interpolates downwards for older versions.
-# These are larger than the initial pass because some archived data windows
-# can over-reward older 2024-era entries; the lineage signal pulls newer
-# releases past their older siblings even when older scores are still high.
+
 MODEL_GENERATION_BONUS_MAX = 10.0
 MODEL_GENERATION_PENALTY_MAX = 6.0

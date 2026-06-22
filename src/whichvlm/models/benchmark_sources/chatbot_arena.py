@@ -6,20 +6,17 @@ import httpx
 
 from whichvlm.models.http import get_with_retries
 
-# --- Data source URLs ---
+
 ARENA_ROWS_URL = "https://datasets-server.huggingface.co/rows"
 ARENA_DATASET = "mathewhe/chatbot-arena-elo"
 
-# --- Legacy ranking normalization ---
-# Legacy ELO range: ~1030 (worst) to ~1424 (best). This source is effectively
-# frozen in coverage, so we cap normalized output at 82 so newer sources can
-# still win when both have evidence for the same model.
-_ARENA_ELO_MIN = 1030
-_ARENA_ELO_MAX = 1430
-_ARENA_MAX_NORMALIZED = 82.0
 
-# --- Scoreboard display-name -> HuggingFace org mapping ---
-_ARENA_ORG_TO_HF: dict[str, list[str]] = {
+ARENA_ELO_MIN = 1030
+ARENA_ELO_MAX = 1430
+ARENA_MAX_NORMALIZED = 82.0
+
+
+ARENA_ORG_TO_HF: dict[str, list[str]] = {
     "Alibaba": ["Qwen"],
     "Meta": ["meta-llama"],
     "DeepSeek": ["deepseek-ai"],
@@ -56,31 +53,31 @@ _ARENA_ORG_TO_HF: dict[str, list[str]] = {
 }
 
 
-def _normalize_arena_elo(elo: float) -> float:
-    """Normalize secondary-score values to a frozen-source-aware 0-_ARENA_MAX_NORMALIZED scale."""
+def normalize_arena_elo(elo: float) -> float:
+
     score = (
-        (elo - _ARENA_ELO_MIN)
-        / (_ARENA_ELO_MAX - _ARENA_ELO_MIN)
-        * _ARENA_MAX_NORMALIZED
+        (elo - ARENA_ELO_MIN)
+        / (ARENA_ELO_MAX - ARENA_ELO_MIN)
+        * ARENA_MAX_NORMALIZED
     )
-    return max(0.0, min(_ARENA_MAX_NORMALIZED, round(score, 1)))
+    return max(0.0, min(ARENA_MAX_NORMALIZED, round(score, 1)))
 
 
-def _arena_name_to_hf_ids(model_name: str, org: str) -> list[str]:
-    """Convert source display names to potential HuggingFace model IDs."""
-    hf_orgs = _ARENA_ORG_TO_HF.get(org, [])
+def arena_name_to_hf_ids(model_name: str, org: str) -> list[str]:
+
+    hf_orgs = ARENA_ORG_TO_HF.get(org, [])
     candidates = []
 
-    # Clean the model name: remove date suffixes like "(03-2025)"
+
     clean_name = re.sub(r"\s*\([\d-]+\)\s*$", "", model_name).strip()
-    # Remove -bf16, -fp8 suffixes for base matching
+
     base_name = re.sub(r"-(bf16|fp8|fp16)$", "", clean_name, flags=re.IGNORECASE)
 
     for hf_org in hf_orgs:
         candidates.append(f"{hf_org}/{clean_name}")
         if base_name != clean_name:
             candidates.append(f"{hf_org}/{base_name}")
-        # Try with -Instruct suffix stripped for base model matching
+
         no_instruct = re.sub(r"-Instruct$", "", clean_name)
         if no_instruct != clean_name:
             candidates.append(f"{hf_org}/{no_instruct}")
@@ -89,7 +86,7 @@ def _arena_name_to_hf_ids(model_name: str, org: str) -> list[str]:
 
 
 async def fetch_arena_scores(client: httpx.AsyncClient) -> dict[str, float]:
-    """Fetch secondary benchmark scores via rows API."""
+
     scores: dict[str, float] = {}
     offset = 0
 
@@ -120,13 +117,13 @@ async def fetch_arena_scores(client: httpx.AsyncClient) -> dict[str, float]:
 
             if not model_name or not elo or elo <= 0:
                 continue
-            # Skip proprietary models (can't run locally)
+
             if "Proprietary" in lic or "Propretary" in lic:
                 continue
 
-            normalized = _normalize_arena_elo(elo)
-            # Map to all potential HF IDs
-            hf_ids = _arena_name_to_hf_ids(model_name, org)
+            normalized = normalize_arena_elo(elo)
+
+            hf_ids = arena_name_to_hf_ids(model_name, org)
             for hf_id in hf_ids:
                 scores[hf_id] = normalized
 

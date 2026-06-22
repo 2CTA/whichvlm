@@ -1,13 +1,11 @@
-"""Tests for model metadata normalization in fetcher."""
-
 import asyncio
 
 import whichvlm.models.fetcher as fetcher_mod
 from whichvlm.models.fetcher import (
-    _extract_hf_eval_score,
-    _extract_published_at,
-    _normalize_param_count,
-    _parse_model,
+    extract_hf_eval_score,
+    extract_published_at,
+    normalize_param_count,
+    parse_model,
     dicts_to_models,
     fetch_models,
     models_to_dicts,
@@ -16,7 +14,7 @@ from whichvlm.models.types import ModelArtifact, ModelInfo
 
 
 def test_normalize_param_count_for_quantized_repo_uses_size_hint():
-    corrected = _normalize_param_count(
+    corrected = normalize_param_count(
         extracted=5_233_828_308,
         model_id="ISTA-DASLab/gemma-3-27b-it-GPTQ-4b-128g",
         base_model="google/gemma-3-27b-it",
@@ -25,7 +23,7 @@ def test_normalize_param_count_for_quantized_repo_uses_size_hint():
 
 
 def test_normalize_param_count_keeps_reasonable_value():
-    kept = _normalize_param_count(
+    kept = normalize_param_count(
         extracted=11_765_788_416,
         model_id="community-quants/gemma-3-12b-it-GGUF",
         base_model="google/gemma-3-12b-it",
@@ -34,7 +32,7 @@ def test_normalize_param_count_keeps_reasonable_value():
 
 
 def test_normalize_param_count_with_no_hint_keeps_original():
-    kept = _normalize_param_count(
+    kept = normalize_param_count(
         extracted=3_820_000_000,
         model_id="microsoft/Phi-3-mini-4k-instruct-gguf",
         base_model=None,
@@ -201,7 +199,7 @@ def test_dicts_to_models_recovers_missing_known_parameter_count():
 
 
 def test_parse_model_uses_current_glm5_and_xiaomi_active_counts():
-    glm = _parse_model(
+    glm = parse_model(
         {
             "id": "zai-org/GLM-5",
             "config": {"architectures": ["GlmForCausalLM"]},
@@ -210,7 +208,7 @@ def test_parse_model_uses_current_glm5_and_xiaomi_active_counts():
             "cardData": {},
         }
     )
-    mimo = _parse_model(
+    mimo = parse_model(
         {
             "id": "XiaomiMiMo/MiMo-V2-Flash",
             "config": {"architectures": ["LlamaForCausalLM"]},
@@ -227,7 +225,7 @@ def test_parse_model_uses_current_glm5_and_xiaomi_active_counts():
 
 
 def test_parse_model_recovers_qwen36_a3b_active_params_from_name():
-    parsed = _parse_model(
+    parsed = parse_model(
         {
             "id": "Qwen/Qwen3.6-35B-A3B",
             "config": {
@@ -296,7 +294,7 @@ def test_models_cache_roundtrip_keeps_vlm_package_graph():
 
 
 def test_extract_published_at_prefers_created_at():
-    value = _extract_published_at(
+    value = extract_published_at(
         {
             "createdAt": "2025-01-01T00:00:00.000Z",
             "lastModified": "2026-01-01T00:00:00.000Z",
@@ -306,7 +304,7 @@ def test_extract_published_at_prefers_created_at():
 
 
 def test_extract_published_at_falls_back_to_last_modified():
-    value = _extract_published_at(
+    value = extract_published_at(
         {
             "lastModified": "2026-01-01T00:00:00.000Z",
         }
@@ -315,7 +313,7 @@ def test_extract_published_at_falls_back_to_last_modified():
 
 
 def test_parse_model_keeps_split_gguf_as_single_variant():
-    parsed = _parse_model(
+    parsed = parse_model(
         {
             "id": "org/Test-8B-GGUF",
             "config": {
@@ -345,7 +343,7 @@ def test_parse_model_keeps_split_gguf_as_single_variant():
 
 
 def test_extract_hf_eval_score_uses_general_datasets_and_median():
-    score = _extract_hf_eval_score(
+    score = extract_hf_eval_score(
         {
             "evalResults": [
                 {
@@ -374,12 +372,12 @@ def test_extract_hf_eval_score_uses_general_datasets_and_median():
             ]
         }
     )
-    # Only general evals (MMLU/GSM8K here) contribute, using their median.
+
     assert score == 66.4
 
 
 def test_parse_model_extracts_hf_eval_benchmark_score():
-    parsed = _parse_model(
+    parsed = parse_model(
         {
             "id": "meta-llama/Llama-3.1-8B-Instruct",
             "config": {"architectures": ["LlamaForCausalLM"]},
@@ -403,7 +401,7 @@ def test_parse_model_extracts_hf_eval_benchmark_score():
 
 
 def test_parse_model_builds_vlm_package_metadata():
-    parsed = _parse_model(
+    parsed = parse_model(
         {
             "id": "Qwen/Qwen2.5-VL-7B-Instruct",
             "pipeline_tag": "image-text-to-text",
@@ -435,7 +433,7 @@ def test_parse_model_builds_vlm_package_metadata():
 
 
 def test_parse_model_marks_community_gguf_relationship():
-    parsed = _parse_model(
+    parsed = parse_model(
         {
             "id": "community/Qwen2.5-VL-7B-GGUF",
             "pipeline_tag": "image-text-to-text",
@@ -467,7 +465,7 @@ def test_parse_model_marks_community_gguf_relationship():
 
 
 def test_parse_model_records_mmproj_artifact_separately_from_gguf_variants():
-    parsed = _parse_model(
+    parsed = parse_model(
         {
             "id": "community/LLaVA-7B-GGUF",
             "pipeline_tag": "image-text-to-text",
@@ -495,7 +493,7 @@ def test_parse_model_records_mmproj_artifact_separately_from_gguf_variants():
 
 
 def test_parse_model_preserves_multi_parent_merged_lineage():
-    parsed = _parse_model(
+    parsed = parse_model(
         {
             "id": "community/Fused-VL-Model",
             "pipeline_tag": "image-text-to-text",
@@ -527,11 +525,9 @@ def test_parse_model_preserves_multi_parent_merged_lineage():
 
 
 def test_deepseek_v4_flash_uses_model_card_counts_over_hf_tensor_metadata():
-    """DeepSeek V4 Flash's mixed-precision HF tensor metadata reports a
-    smaller stored tensor count than the model-card total. Ranking and GGUF
-    synthesis must use the published model capacity instead."""
 
-    parsed = _parse_model(
+
+    parsed = parse_model(
         {
             "id": "deepseek-ai/DeepSeek-V4-Flash",
             "config": {
@@ -564,7 +560,7 @@ def test_fetch_models_backfills_explicit_vlm_seed_details(monkeypatch):
 
     class Response:
         def __init__(self, data, status_code: int = 200):
-            self._data = data
+            self.data = data
             self.status_code = status_code
 
         def raise_for_status(self):
@@ -572,7 +568,7 @@ def test_fetch_models_backfills_explicit_vlm_seed_details(monkeypatch):
                 raise AssertionError(self.status_code)
 
         def json(self):
-            return self._data
+            return self.data
 
     async def fake_get(client, url, params=None):
         seen_urls.append(url)

@@ -1,10 +1,3 @@
-"""Tests for legacy Kepler GPU entries and their Vulkan-only handling.
-
-Kepler cards (compute capability 3.0/3.5) have no CUDA support in modern
-llama.cpp, so whichvlm carries bandwidth + compute-capability data for them
-and flags them as Vulkan-only via ``VULKAN_ONLY_GPUS``.
-"""
-
 import pytest
 
 from whichvlm.constants import (
@@ -18,13 +11,13 @@ from whichvlm.data.gpu import (
 )
 from whichvlm.engine.compatibility import check_compatibility
 from whichvlm.hardware.nvidia import (
-    _lookup_bandwidth,
-    _lookup_compute_capability,
+    lookup_bandwidth,
+    lookup_compute_capability,
 )
 from whichvlm.hardware.types import GPUInfo, HardwareInfo
 from whichvlm.models.types import GGUFVariant, ModelInfo
 
-# (GPU name, expected bandwidth GB/s, expected compute capability)
+
 KEPLER_GPUS: list[tuple[str, float, tuple[int, int]]] = [
     ("Quadro K6000", 288.0, (3, 5)),
     ("Quadro K5200", 192.3, (3, 5)),
@@ -38,31 +31,31 @@ KEPLER_GPUS: list[tuple[str, float, tuple[int, int]]] = [
 ]
 
 
-@pytest.mark.parametrize("name, bandwidth, _cc", KEPLER_GPUS)
-def test_kepler_gpu_present_in_bandwidth(name, bandwidth, _cc):
+@pytest.mark.parametrize("name, bandwidth, compute_capability", KEPLER_GPUS)
+def test_kepler_gpu_present_in_bandwidth(name, bandwidth, compute_capability):
     assert name in GPU_BANDWIDTH
     assert GPU_BANDWIDTH[name] == bandwidth
 
 
-@pytest.mark.parametrize("name, _bandwidth, cc", KEPLER_GPUS)
-def test_kepler_gpu_present_in_compute_capability(name, _bandwidth, cc):
+@pytest.mark.parametrize("name, bandwidth, cc", KEPLER_GPUS)
+def test_kepler_gpu_present_in_compute_capability(name, bandwidth, cc):
     assert name in NVIDIA_COMPUTE_CAPABILITY
     assert NVIDIA_COMPUTE_CAPABILITY[name] == cc
 
 
-@pytest.mark.parametrize("name, _bandwidth, cc", KEPLER_GPUS)
-def test_kepler_compute_capability_is_kepler_era(name, _bandwidth, cc):
-    # Kepler is always compute capability 3.x.
+@pytest.mark.parametrize("name, bandwidth, cc", KEPLER_GPUS)
+def test_kepler_compute_capability_is_kepler_era(name, bandwidth, cc):
+
     assert cc[0] == 3
 
 
-@pytest.mark.parametrize("name, _bandwidth, _cc", KEPLER_GPUS)
-def test_kepler_gpu_marked_vulkan_only(name, _bandwidth, _cc):
+@pytest.mark.parametrize("name, bandwidth, compute_capability", KEPLER_GPUS)
+def test_kepler_gpu_marked_vulkan_only(name, bandwidth, compute_capability):
     assert name in VULKAN_ONLY_GPUS
 
 
 def test_vulkan_only_set_matches_kepler_list():
-    expected = {name for name, _bw, _cc in KEPLER_GPUS}
+    expected = {name for name, bandwidth, compute_capability in KEPLER_GPUS}
     assert set(VULKAN_ONLY_GPUS) == expected
 
 
@@ -71,13 +64,13 @@ def test_vulkan_only_gpus_is_immutable():
 
 
 def test_constants_shim_reexports_data_module():
-    # The constants module is a compatibility shim over whichvlm.data.gpu.
+
     assert GPU_BANDWIDTH is DATA_GPU_BANDWIDTH
     assert VULKAN_ONLY_GPUS is DATA_VULKAN_ONLY_GPUS
 
 
 def test_every_vulkan_only_gpu_has_bandwidth_and_compute_capability():
-    # Each flagged card must be fully described so downstream lookups work.
+
     for name in VULKAN_ONLY_GPUS:
         assert name in GPU_BANDWIDTH
         assert name in NVIDIA_COMPUTE_CAPABILITY
@@ -85,21 +78,21 @@ def test_every_vulkan_only_gpu_has_bandwidth_and_compute_capability():
 
 @pytest.mark.parametrize("name, bandwidth, cc", KEPLER_GPUS)
 def test_nvidia_name_lookup_resolves_kepler_specs(name, bandwidth, cc):
-    # Detection matches the registry substrings against the full marketing
-    # name reported by the driver (e.g. "NVIDIA Quadro K4200").
+
+
     full_name = f"NVIDIA {name}"
-    assert _lookup_bandwidth(full_name) == bandwidth
-    assert _lookup_compute_capability(full_name) == cc
+    assert lookup_bandwidth(full_name) == bandwidth
+    assert lookup_compute_capability(full_name) == cc
 
 
 def test_k4200_lookup_not_shadowed_by_k420():
-    # "Quadro K420" is a substring of "Quadro K4200"; the length-sorted lookup
-    # must still resolve the longer name to its own bandwidth.
-    assert _lookup_bandwidth("NVIDIA Quadro K4200") == 173.0
-    assert _lookup_bandwidth("NVIDIA Quadro K420") == 14.4
 
 
-def _kepler_hardware(name: str, cc: tuple[int, int], bandwidth: float) -> HardwareInfo:
+    assert lookup_bandwidth("NVIDIA Quadro K4200") == 173.0
+    assert lookup_bandwidth("NVIDIA Quadro K420") == 14.4
+
+
+def kepler_hardware(name: str, cc: tuple[int, int], bandwidth: float) -> HardwareInfo:
     return HardwareInfo(
         gpus=[
             GPUInfo(
@@ -131,7 +124,7 @@ def test_compatibility_flags_kepler_as_vulkan_only(name, bandwidth, cc):
         quant_type="Q4_K_M",
         file_size_bytes=2_000_000_000,
     )
-    hw = _kepler_hardware(name, cc, bandwidth)
+    hw = kepler_hardware(name, cc, bandwidth)
 
     result = check_compatibility(model, variant, hw)
 

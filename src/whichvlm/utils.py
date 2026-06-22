@@ -15,26 +15,18 @@ def current_version() -> str:
         return "unknown"
 
 
-_SHORTHAND_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([kmb])$", re.IGNORECASE)
-_MULTIPLIERS = {"k": 1024, "m": 1024 * 1024, "b": 1024 * 1024 * 1024}
+SHORTHAND_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([kmb])$", re.IGNORECASE)
+MULTIPLIERS = {"k": 1024, "m": 1024 * 1024, "b": 1024 * 1024 * 1024}
 
 
 def parse_context_length(value: str) -> int:
-    """Parse a context length string, supporting shorthand like 64k or 128K.
 
-    Accepts plain integers (e.g. "4096") or shorthand with a suffix:
-      k/K = x1,024  (64k -> 65536)
-      m/M = x1,048,576
-      b/B = x1,073,741,824
-
-    Returns the integer context length. Raises ValueError on bad input.
-    """
     value = value.strip()
-    match = _SHORTHAND_RE.match(value)
+    match = SHORTHAND_RE.match(value)
     if match:
         number = float(match.group(1))
         suffix = match.group(2).lower()
-        context_length = int(number * _MULTIPLIERS[suffix])
+        context_length = int(number * MULTIPLIERS[suffix])
         if context_length <= 0:
             raise ValueError(f"Context length must be positive, got {value!r}")
         return context_length
@@ -51,7 +43,7 @@ def parse_context_length(value: str) -> int:
 
 
 class ContextLengthType(click.ParamType):
-    """Click parameter type that accepts integers or shorthand like 64k."""
+
 
     name = "context_length"
 
@@ -68,7 +60,7 @@ CONTEXT_LENGTH = ContextLengthType()
 
 
 def cache_dir() -> Path:
-    """Return the whichvlm cache directory, respecting XDG_CACHE_HOME."""
+
     base = os.environ.get("XDG_CACHE_HOME")
     if base and Path(base).is_absolute():
         return Path(base) / "whichvlm"

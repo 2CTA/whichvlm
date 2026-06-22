@@ -1,8 +1,8 @@
-from whichvlm.models.grouper import _normalize_name, group_models
+from whichvlm.models.grouper import normalize_name, group_models
 from whichvlm.models.types import ModelArtifact, ModelInfo
 
 
-def _make_model(
+def make_model(
     id: str, base_model: str | None = None, downloads: int = 100
 ) -> ModelInfo:
     return ModelInfo(
@@ -16,8 +16,8 @@ def _make_model(
 
 
 def test_group_by_base_model():
-    base = _make_model("meta/Llama-3-8B", downloads=1000)
-    gguf = _make_model(
+    base = make_model("meta/Llama-3-8B", downloads=1000)
+    gguf = make_model(
         "user/Llama-3-8B-GGUF", base_model="meta/Llama-3-8B", downloads=500
     )
     families = group_models([base, gguf])
@@ -27,8 +27,8 @@ def test_group_by_base_model():
 
 
 def test_group_by_name_normalization():
-    base = _make_model("org/model-v1", downloads=1000)
-    gguf = _make_model("org/model-v1-GGUF", downloads=200)
+    base = make_model("org/model-v1", downloads=1000)
+    gguf = make_model("org/model-v1-GGUF", downloads=200)
     families = group_models([base, gguf])
     assert len(families) == 1
     assert families[0].base_model.id == "org/model-v1"
@@ -36,16 +36,16 @@ def test_group_by_name_normalization():
 
 
 def test_fp4_suffixes_normalize_to_base_family():
-    # MXFP4 and NVFP4 derivatives must collapse onto the base family the same
-    # way the older quant suffixes do, instead of orphaning into their own.
-    base = _normalize_name("openai/gpt-oss-20b")
-    assert _normalize_name("openai/gpt-oss-20b-MXFP4") == base
-    assert _normalize_name("openai/gpt-oss-20b-NVFP4") == base
+
+
+    base = normalize_name("openai/gpt-oss-20b")
+    assert normalize_name("openai/gpt-oss-20b-MXFP4") == base
+    assert normalize_name("openai/gpt-oss-20b-NVFP4") == base
 
 
 def test_ungrouped_models_separate():
-    m1 = _make_model("org/alpha", downloads=100)
-    m2 = _make_model("org/beta", downloads=200)
+    m1 = make_model("org/alpha", downloads=100)
+    m2 = make_model("org/beta", downloads=200)
     families = group_models([m1, m2])
     assert len(families) == 2
 
@@ -56,8 +56,8 @@ def test_empty_input():
 
 
 def test_family_id_set():
-    base = _make_model("meta/Llama-3-8B", downloads=1000)
-    gguf = _make_model(
+    base = make_model("meta/Llama-3-8B", downloads=1000)
+    gguf = make_model(
         "user/Llama-3-8B-GGUF", base_model="meta/Llama-3-8B", downloads=500
     )
     families = group_models([base, gguf])
@@ -136,8 +136,8 @@ def test_vlm_variants_group_into_logical_model_package():
 
 
 def test_vlm_inventory_groups_known_family_aliases_without_base_model():
-    official = _make_model("llava-hf/llava-1.5-7b-hf", downloads=500)
-    original = _make_model("liuhaotian/llava-v1.5-7b", downloads=1000)
+    official = make_model("llava-hf/llava-1.5-7b-hf", downloads=500)
+    original = make_model("liuhaotian/llava-v1.5-7b", downloads=1000)
 
     families = group_models([official, original])
 

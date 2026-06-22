@@ -1,33 +1,17 @@
-"""Ranking quality regressions.
-
-Each test locks down a failure mode that can make weak variants rank too high:
-
-- Q1_0 / Q2_0 derivatives must not surface as full GPU candidates by
-  default.
-- Self-reported (hf_eval) values must not beat independent leaderboard
-  evidence.
-- CI / research orgs (gpt2, opt-125m, tiny-Qwen2ForCausalLM) must never
-  occupy a ranking slot.
-- Newer generation in the same family should beat the older one when
-  benchmark data is unavailable or weak.
-- Heretic / abliterated / uncensored derivatives should rank below their
-  clean base/converter counterparts.
-"""
-
 from __future__ import annotations
 
 from whichvlm.engine.ranker import (
-    _SOURCE_WEIGHTS,
-    _derivative_name_penalty,
-    _generation_bonus,
-    _is_excluded_model,
+    SOURCE_WEIGHTS,
+    derivative_name_penalty,
+    generation_bonus,
+    is_excluded_model,
     rank_models,
 )
 from whichvlm.hardware.types import GPUInfo, HardwareInfo
 from whichvlm.models.types import GGUFVariant, ModelInfo
 
 
-def _hw(
+def hw(
     vram_gb: int = 24,
     bandwidth_gbps: float = 1000.0,
     vendor: str = "nvidia",
@@ -56,7 +40,7 @@ def _hw(
     )
 
 
-def _gguf(quant: str, size_gb: float) -> GGUFVariant:
+def gguf(quant: str, size_gb: float) -> GGUFVariant:
     return GGUFVariant(
         filename=f"model-{quant}.gguf",
         quant_type=quant,
@@ -65,10 +49,7 @@ def _gguf(quant: str, size_gb: float) -> GGUFVariant:
 
 
 def test_q1_0_only_repo_is_severely_penalized_when_no_quant_filter():
-    """An 8B repo that only ships Q1_0 may still appear as a fallback (since
-    it's the only thing the repo offers) but its quality score must be
-    crushed by the combined Q1_0 (-55%) + self_reported (-45%) penalties so
-    it cannot beat a normal Q4_K_M alternative."""
+
     weak_quant = ModelInfo(
         id="fixture-org/Weak-Quant-8B-GGUF",
         family_id="weak-quant-8b",
@@ -76,7 +57,7 @@ def test_q1_0_only_repo_is_severely_penalized_when_no_quant_filter():
         parameter_count=8_000_000_000,
         downloads=48_000,
         likes=0,
-        gguf_variants=[_gguf("Q1_0", 4.6)],
+        gguf_variants=[gguf("Q1_0", 4.6)],
         benchmark_scores={"hf_eval": 88.0},
     )
     normal = ModelInfo(
@@ -87,17 +68,17 @@ def test_q1_0_only_repo_is_severely_penalized_when_no_quant_filter():
         downloads=58_000,
         likes=20,
         base_model="Qwen/Qwen3-8B",
-        gguf_variants=[_gguf("Q4_K_M", 4.7)],
+        gguf_variants=[gguf("Q4_K_M", 4.7)],
     )
     results = rank_models(
         [weak_quant, normal],
-        _hw(),
+        hw(),
         top_n=5,
         benchmark_scores={"Qwen/Qwen3-8B-Instruct": 65.0},
     )
     ids = [r.model.id for r in results]
     assert "community-quants/Qwen3-8B-GGUF" in ids
-    # The Q1_0 + self_reported combo must end up below the normal Q4_K_M.
+
     sc_weak_quant = next(
         (
             r.quality_score
@@ -115,12 +96,12 @@ def test_q1_0_only_repo_is_severely_penalized_when_no_quant_filter():
         0.0,
     )
     assert sc_normal > sc_weak_quant
-    # The weak quant should land in the "obviously broken" band.
+
     assert sc_weak_quant < 25
 
 
 def test_q1_0_returned_when_explicitly_requested_via_quant_filter():
-    """Users can still ask for Q1_0 with --quant Q1_0 when they really mean it."""
+
     model = ModelInfo(
         id="fixture-org/Weak-Quant-8B-GGUF",
         family_id="weak-quant-8b",
@@ -128,10 +109,10 @@ def test_q1_0_returned_when_explicitly_requested_via_quant_filter():
         parameter_count=8_000_000_000,
         downloads=48_000,
         likes=0,
-        gguf_variants=[_gguf("Q1_0", 4.6)],
+        gguf_variants=[gguf("Q1_0", 4.6)],
     )
     results = rank_models(
-        [model], _hw(), top_n=5, benchmark_scores={}, quant_filter="Q1_0"
+        [model], hw(), top_n=5, benchmark_scores={}, quant_filter="Q1_0"
     )
     assert len(results) == 1
     assert results[0].gguf_variant is not None
@@ -139,8 +120,7 @@ def test_q1_0_returned_when_explicitly_requested_via_quant_filter():
 
 
 def test_q1_q2_quality_penalty_is_severe():
-    """Sub-2-bit quants must carry 40-60% quality penalty, not the
-    old 5% fallback. We assert the constant directly to lock this in."""
+
     from whichvlm.constants import QUANT_QUALITY_PENALTY
 
     assert QUANT_QUALITY_PENALTY["Q1_0"] >= 0.50
@@ -152,7 +132,7 @@ def test_q1_q2_quality_penalty_is_severe():
 
 
 def test_excluded_orgs_never_rank():
-    """gpt2 / opt-125m / TRL fixtures must be skipped regardless of DL."""
+
     gpt2 = ModelInfo(
         id="openai-community/gpt2",
         family_id="gpt2",
@@ -175,7 +155,7 @@ def test_excluded_orgs_never_rank():
         parameter_count=1_000_000,
         downloads=6_000_000,
     )
-    # also a normal model so the result list is non-empty
+
     real = ModelInfo(
         id="community-quants/gemma-3-12b-it-GGUF",
         family_id="gemma-3-12b",
@@ -183,9 +163,9 @@ def test_excluded_orgs_never_rank():
         parameter_count=12_200_000_000,
         downloads=70_000,
         likes=10,
-        gguf_variants=[_gguf("Q4_K_M", 7.0)],
+        gguf_variants=[gguf("Q4_K_M", 7.0)],
     )
-    results = rank_models([gpt2, opt, tiny, real], _hw(), top_n=10, benchmark_scores={})
+    results = rank_models([gpt2, opt, tiny, real], hw(), top_n=10, benchmark_scores={})
     ids = [r.model.id for r in results]
     assert "openai-community/gpt2" not in ids
     assert "facebook/opt-125m" not in ids
@@ -194,82 +174,81 @@ def test_excluded_orgs_never_rank():
 
 
 def test_is_excluded_model_helper():
-    assert _is_excluded_model("openai-community/gpt2")
-    assert _is_excluded_model("facebook/opt-125m")
-    assert _is_excluded_model("EleutherAI/pythia-70m-deduped")
-    assert _is_excluded_model("trl-internal-testing/tiny-Qwen2ForCausalLM-2.5")
-    assert _is_excluded_model("hmellor/tiny-random-LlamaForCausalLM")
-    assert not _is_excluded_model("Qwen/Qwen3-8B")
-    assert not _is_excluded_model("meta-llama/Llama-4-Maverick-17B-128E-Instruct")
+    assert is_excluded_model("openai-community/gpt2")
+    assert is_excluded_model("facebook/opt-125m")
+    assert is_excluded_model("EleutherAI/pythia-70m-deduped")
+    assert is_excluded_model("trl-internal-testing/tiny-Qwen2ForCausalLM-2.5")
+    assert is_excluded_model("hmellor/tiny-random-LlamaForCausalLM")
+    assert not is_excluded_model("Qwen/Qwen3-8B")
+    assert not is_excluded_model("meta-llama/Llama-4-Maverick-17B-128E-Instruct")
 
 
 def test_generation_bonus_newer_wins_over_legacy_in_same_family():
-    new = _generation_bonus("Qwen/Qwen3.6-27B")
-    mid = _generation_bonus("Qwen/Qwen3-8B")
-    old = _generation_bonus("Qwen/Qwen2.5-7B-Instruct")
-    ancient = _generation_bonus("Qwen/Qwen-7B")
+    new = generation_bonus("Qwen/Qwen3.6-27B")
+    mid = generation_bonus("Qwen/Qwen3-8B")
+    old = generation_bonus("Qwen/Qwen2.5-7B-Instruct")
+    ancient = generation_bonus("Qwen/Qwen-7B")
     assert new > mid > old > ancient
 
 
 def test_generation_bonus_covers_vlm_families():
-    assert _generation_bonus("Qwen/Qwen3-VL-8B-Instruct") > _generation_bonus(
+    assert generation_bonus("Qwen/Qwen3-VL-8B-Instruct") > generation_bonus(
         "Qwen/Qwen2.5-VL-7B-Instruct"
     )
-    assert _generation_bonus("OpenGVLab/InternVL3-8B") > _generation_bonus(
+    assert generation_bonus("OpenGVLab/InternVL3-8B") > generation_bonus(
         "OpenGVLab/InternVL2_5-8B"
     )
-    assert _generation_bonus("llava-hf/llava-onevision-qwen2-7b") > _generation_bonus(
+    assert generation_bonus("llava-hf/llava-onevision-qwen2-7b") > generation_bonus(
         "llava-hf/llava-1.5-7b-hf"
     )
 
 
 def test_lineage_covers_llama_deepseek_gemma_phi():
-    assert _generation_bonus("meta-llama/Llama-4-Scout") > _generation_bonus(
+    assert generation_bonus("meta-llama/Llama-4-Scout") > generation_bonus(
         "meta-llama/Llama-3.1-8B-Instruct"
     )
-    assert _generation_bonus("deepseek-ai/DeepSeek-V4-Pro") > _generation_bonus(
+    assert generation_bonus("deepseek-ai/DeepSeek-V4-Pro") > generation_bonus(
         "deepseek-ai/DeepSeek-V2.5"
     )
-    assert _generation_bonus("google/gemma-4-31b-it") > _generation_bonus(
+    assert generation_bonus("google/gemma-4-31b-it") > generation_bonus(
         "google/gemma-2-27b-it"
     )
-    assert _generation_bonus("microsoft/phi-4") > _generation_bonus(
+    assert generation_bonus("microsoft/phi-4") > generation_bonus(
         "microsoft/Phi-3-mini-4k-instruct"
     )
 
 
 def test_lineage_covers_t5_variants_without_gemma_collision():
-    assert _generation_bonus("google/t5gemma-4b") > _generation_bonus(
+    assert generation_bonus("google/t5gemma-4b") > generation_bonus(
         "google/flan-t5-xl"
     )
-    assert _generation_bonus("google/t5-gemma-4b") == _generation_bonus(
+    assert generation_bonus("google/t5-gemma-4b") == generation_bonus(
         "google/t5gemma-4b"
     )
-    assert _generation_bonus("google/t5_gemma-4b") == _generation_bonus(
+    assert generation_bonus("google/t5_gemma-4b") == generation_bonus(
         "google/t5gemma-4b"
     )
-    assert _generation_bonus("openai/gpt5-test") == 0.0
+    assert generation_bonus("openai/gpt5-test") == 0.0
 
 
 def test_unknown_family_gets_zero_bonus():
-    assert _generation_bonus("random-org/random-model-7b") == 0.0
+    assert generation_bonus("random-org/random-model-7b") == 0.0
 
 
 def test_derivative_penalty_for_heretic_uncensored():
-    assert _derivative_name_penalty("derivative-fixtures/gemma-3-12b-it-heretic-v2") < 0
+    assert derivative_name_penalty("derivative-fixtures/gemma-3-12b-it-heretic-v2") < 0
     assert (
-        _derivative_name_penalty(
+        derivative_name_penalty(
             "derivative-fixtures/Qwen3.6-27B-Abliterated-Heretic-Uncensored-GGUF"
         )
         < 0
     )
-    assert _derivative_name_penalty("derivative-fixtures/gemma-4-E4B-it-OBLITERATED") < 0
-    assert _derivative_name_penalty("community-quants/Qwen3-32B-GGUF") == 0.0
+    assert derivative_name_penalty("derivative-fixtures/gemma-4-E4B-it-OBLITERATED") < 0
+    assert derivative_name_penalty("community-quants/Qwen3-32B-GGUF") == 0.0
 
 
 def test_self_reported_evidence_does_not_outrank_direct_leaderboard():
-    """A self-reported eval claiming 91 must NOT
-    outrank an independent-leaderboard hit on a comparable model."""
+
     self_reported = ModelInfo(
         id="fixture-org/Self-Reported-8B",
         family_id="self-reported-8b",
@@ -277,7 +256,7 @@ def test_self_reported_evidence_does_not_outrank_direct_leaderboard():
         parameter_count=8_000_000_000,
         downloads=20_000,
         likes=10,
-        gguf_variants=[_gguf("Q4_K_M", 4.5)],
+        gguf_variants=[gguf("Q4_K_M", 4.5)],
         benchmark_scores={"hf_eval": 91.0},
     )
     direct_hit = ModelInfo(
@@ -287,11 +266,11 @@ def test_self_reported_evidence_does_not_outrank_direct_leaderboard():
         parameter_count=8_000_000_000,
         downloads=50_000,
         likes=200,
-        gguf_variants=[_gguf("Q4_K_M", 4.5)],
+        gguf_variants=[gguf("Q4_K_M", 4.5)],
     )
     results = rank_models(
         [self_reported, direct_hit],
-        _hw(),
+        hw(),
         top_n=5,
         benchmark_scores={"trusted-org/Real-Bench-8B": 70.0},
     )
@@ -302,51 +281,47 @@ def test_self_reported_evidence_does_not_outrank_direct_leaderboard():
 
 
 def test_self_reported_outranks_only_when_there_is_nothing_else():
-    """When no other evidence exists, self_reported should still produce a
-    score so the candidate isn't filtered out — just at a lower weight."""
     only_self_reported = ModelInfo(
         id="some-org/Only-Self-Reported-8B",
         family_id="only-sr-8b",
         name="Only-SR",
         parameter_count=8_000_000_000,
         downloads=20_000,
-        gguf_variants=[_gguf("Q4_K_M", 4.5)],
+        gguf_variants=[gguf("Q4_K_M", 4.5)],
         benchmark_scores={"hf_eval": 90.0},
     )
     results = rank_models(
         [only_self_reported],
-        _hw(),
+        hw(),
         top_n=5,
         benchmark_scores={},
     )
     assert len(results) == 1
     assert results[0].benchmark_status == "self_reported"
-    # Score should be positive but well below what a 90 direct-leaderboard
-    # would have produced (which would push past 60 with this size class).
+
+
     assert 0 < results[0].quality_score < 60
 
 
 def test_source_weights_ordering():
-    """Direct must weight the most, self_reported the least among
-    benchmark-producing sources."""
-    assert _SOURCE_WEIGHTS["direct"] > _SOURCE_WEIGHTS["base_model"]
-    assert _SOURCE_WEIGHTS["base_model"] > _SOURCE_WEIGHTS["variant"]
-    assert _SOURCE_WEIGHTS["variant"] > _SOURCE_WEIGHTS["line_interp"]
-    assert _SOURCE_WEIGHTS["line_interp"] > _SOURCE_WEIGHTS["self_reported"]
-    assert _SOURCE_WEIGHTS["self_reported"] > 0
-    assert _SOURCE_WEIGHTS["none"] == 0.0
+
+    assert SOURCE_WEIGHTS["direct"] > SOURCE_WEIGHTS["base_model"]
+    assert SOURCE_WEIGHTS["base_model"] > SOURCE_WEIGHTS["variant"]
+    assert SOURCE_WEIGHTS["variant"] > SOURCE_WEIGHTS["line_interp"]
+    assert SOURCE_WEIGHTS["line_interp"] > SOURCE_WEIGHTS["self_reported"]
+    assert SOURCE_WEIGHTS["self_reported"] > 0
+    assert SOURCE_WEIGHTS["none"] == 0.0
 
 
 def test_strict_evidence_filter_excludes_self_reported():
-    """`--evidence strict` should keep only direct hits, dropping
-    self_reported as well as inherited evidence."""
+
     self_reported = ModelInfo(
         id="some-org/Self-Reported-8B",
         family_id="sr-8b",
         name="SR",
         parameter_count=8_000_000_000,
         downloads=20_000,
-        gguf_variants=[_gguf("Q4_K_M", 4.5)],
+        gguf_variants=[gguf("Q4_K_M", 4.5)],
         benchmark_scores={"hf_eval": 95.0},
     )
     direct_hit = ModelInfo(
@@ -355,11 +330,11 @@ def test_strict_evidence_filter_excludes_self_reported():
         name="Real-Bench",
         parameter_count=8_000_000_000,
         downloads=50_000,
-        gguf_variants=[_gguf("Q4_K_M", 4.5)],
+        gguf_variants=[gguf("Q4_K_M", 4.5)],
     )
     results = rank_models(
         [self_reported, direct_hit],
-        _hw(),
+        hw(),
         top_n=5,
         benchmark_scores={"trusted-org/Real-Bench-8B": 70.0},
         evidence_filter="strict",
@@ -369,20 +344,18 @@ def test_strict_evidence_filter_excludes_self_reported():
 
 
 def test_official_org_safetensors_gets_q4km_synthesis():
-    """A Qwen/Meta/Google safetensors-only repo should produce realistic
-    Q4_K_M candidates rather than being scored as bf16 (which forces
-    partial_offload on consumer GPUs)."""
+
     model = ModelInfo(
         id="Qwen/Qwen3.6-27B",
         family_id="qwen3.6-27b",
         name="Qwen3.6-27B",
         parameter_count=27_000_000_000,
         downloads=50_000,
-        gguf_variants=[],  # safetensors only — synthesis should kick in
+        gguf_variants=[],
     )
     results = rank_models(
         [model],
-        _hw(vram_gb=24),
+        hw(vram_gb=24),
         top_n=1,
         benchmark_scores={"Qwen/Qwen3.6-27B": 84.0},
     )
@@ -390,9 +363,8 @@ def test_official_org_safetensors_gets_q4km_synthesis():
     chosen = results[0]
     assert chosen.fit_type == "full_gpu"
     assert chosen.gguf_variant is not None
-    # Synthesis offers a range of K-quants — any of them is acceptable so
-    # long as a GGUF candidate is constructed (i.e. the safetensors-only
-    # repo is rankable at a realistic quant).
+
+
     assert chosen.gguf_variant.quant_type in {
         "Q3_K_M",
         "Q4_K_M",
@@ -403,8 +375,7 @@ def test_official_org_safetensors_gets_q4km_synthesis():
 
 
 def test_prequantized_repo_skips_synthesis():
-    """An -AWQ / -GPTQ repo must not get synthetic Q4_K_M candidates — those
-    repos can't actually serve a GGUF variant."""
+
     model = ModelInfo(
         id="Qwen/Qwen2.5-14B-Instruct-AWQ",
         family_id="qwen2.5-14b-awq",
@@ -414,7 +385,7 @@ def test_prequantized_repo_skips_synthesis():
     )
     q4_filtered = rank_models(
         [model],
-        _hw(vram_gb=24),
+        hw(vram_gb=24),
         top_n=5,
         benchmark_scores={"Qwen/Qwen2.5-14B-Instruct-AWQ": 70.0},
         quant_filter="Q4_K_M",
@@ -423,16 +394,14 @@ def test_prequantized_repo_skips_synthesis():
 
 
 def test_newer_generation_beats_older_at_same_size():
-    """With the realigned recency-aware sources and stronger generation lineage
-    bonus, a current-gen 8B model should outrank a frozen archival-source-favored
-    previous-gen 7B."""
+
     new_gen = ModelInfo(
         id="Qwen/Qwen3-8B",
         family_id="qwen3-8b",
         name="Qwen3-8B",
         parameter_count=8_000_000_000,
         downloads=10_000_000,
-        gguf_variants=[_gguf("Q4_K_M", 4.5)],
+        gguf_variants=[gguf("Q4_K_M", 4.5)],
     )
     old_gen = ModelInfo(
         id="Qwen/Qwen2.5-7B-Instruct",
@@ -440,23 +409,22 @@ def test_newer_generation_beats_older_at_same_size():
         name="Qwen2.5-7B-Instruct",
         parameter_count=7_000_000_000,
         downloads=12_000_000,
-        gguf_variants=[_gguf("Q4_K_M", 4.0)],
+        gguf_variants=[gguf("Q4_K_M", 4.0)],
     )
     results = rank_models(
         [new_gen, old_gen],
-        _hw(vram_gb=24),
+        hw(vram_gb=24),
         top_n=2,
         benchmark_scores={
-            "Qwen/Qwen3-8B": 56.0,  # current-source derived
-            "Qwen/Qwen2.5-7B-Instruct": 35.0,  # recency source supersedes archived values
+            "Qwen/Qwen3-8B": 56.0,
+            "Qwen/Qwen2.5-7B-Instruct": 35.0,
         },
     )
     assert [r.model.id for r in results][0] == "Qwen/Qwen3-8B"
 
 
 def test_speed_estimator_differs_by_quant_and_backend():
-    """Q4_K_M should run faster than F16 on the same hardware, and CUDA
-    should be faster than Metal at equal bandwidth."""
+
     from whichvlm.engine.performance import estimate_tok_per_sec
     from whichvlm.hardware.types import GPUInfo
 
@@ -488,8 +456,8 @@ def test_speed_estimator_differs_by_quant_and_backend():
     q4_cuda = estimate_tok_per_sec(model, q4, cuda, "full_gpu")
     f16_cuda = estimate_tok_per_sec(model, f16, cuda, "full_gpu")
     q4_metal = estimate_tok_per_sec(model, q4, metal, "full_gpu")
-    assert q4_cuda > f16_cuda  # Q4 dequant is faster than F16 matmul read
-    assert q4_cuda > q4_metal  # CUDA beats Metal at equal bandwidth
+    assert q4_cuda > f16_cuda
+    assert q4_cuda > q4_metal
 
 
 def test_vlm_speed_estimate_is_discounted_for_image_prefill():
@@ -537,8 +505,7 @@ def test_vlm_speed_estimate_is_discounted_for_image_prefill():
 
 
 def test_vram_kv_cache_scales_with_context():
-    """KV-cache contribution should grow linearly with context length so
-    longer contexts surface as a real VRAM cost in `plan`."""
+
     from whichvlm.engine.vram import estimate_kv_cache
 
     model = ModelInfo(
@@ -550,6 +517,6 @@ def test_vram_kv_cache_scales_with_context():
     )
     kv_4k = estimate_kv_cache(model, 4096)
     kv_32k = estimate_kv_cache(model, 32768)
-    assert kv_32k > kv_4k * 7  # near-linear in context length
-    # and the absolute size at 32K should be in the gigabyte range
+    assert kv_32k > kv_4k * 7
+
     assert kv_32k > 2 * 1024**3

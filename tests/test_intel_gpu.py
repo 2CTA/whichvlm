@@ -1,5 +1,3 @@
-"""Tests for Linux Intel integrated GPU detection."""
-
 from __future__ import annotations
 
 import subprocess
@@ -37,7 +35,7 @@ def test_detect_intel_gpu_ignores_non_display_lspci(monkeypatch):
         return subprocess.CompletedProcess(args[0], 0, stdout=output, stderr="")
 
     monkeypatch.setattr(intel.subprocess, "run", fake_run)
-    monkeypatch.setattr(intel, "_detect_from_sysfs", lambda: [])
+    monkeypatch.setattr(intel, "detect_from_sysfs", lambda: [])
 
     assert intel.detect_intel_gpus() == []
 
@@ -48,9 +46,9 @@ def test_detect_intel_gpu_from_sysfs_when_lspci_missing(monkeypatch, tmp_path):
     (card / "vendor").write_text("0x8086\n")
     (card / "uevent").write_text("PCI_SLOT_NAME=0000:00:02.0\n")
 
-    monkeypatch.setattr(intel, "_detect_from_lspci", lambda: [])
-    original_sysfs = intel._detect_from_sysfs
-    monkeypatch.setattr(intel, "_detect_from_sysfs", lambda: original_sysfs(tmp_path))
+    monkeypatch.setattr(intel, "detect_from_lspci", lambda: [])
+    original_sysfs = intel.detect_from_sysfs
+    monkeypatch.setattr(intel, "detect_from_sysfs", lambda: original_sysfs(tmp_path))
 
     gpus = intel.detect_intel_gpus()
 
@@ -61,7 +59,7 @@ def test_detect_intel_gpu_from_sysfs_when_lspci_missing(monkeypatch, tmp_path):
 
 
 def test_display_intel_shared_memory_without_zero_kb(monkeypatch):
-    from whichvlm.output import _console as console_mod
+    from whichvlm.output import console as console_mod
     from whichvlm.output import display as display_mod
 
     buf = StringIO()

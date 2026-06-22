@@ -7,10 +7,10 @@ from whichvlm.utils import cache_dir
 
 CACHE_DIR = cache_dir()
 CACHE_FILE = CACHE_DIR / "models.json"
-DEFAULT_TTL_SECONDS = 6 * 3600  # 6 hours
+DEFAULT_TTL_SECONDS = 6 * 3600
 
 
-def _ensure_cache_dir() -> None:
+def ensure_cache_dir() -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -32,7 +32,7 @@ def load_cache() -> list[dict] | None:
 
 
 def save_cache(models: list[dict]) -> None:
-    _ensure_cache_dir()
+    ensure_cache_dir()
     data = {
         "cached_at": time.time(),
         "models": models,

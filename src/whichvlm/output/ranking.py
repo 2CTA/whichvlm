@@ -1,5 +1,3 @@
-"""Ranking and hardware Rich output surfaces."""
-
 from __future__ import annotations
 
 import re
@@ -13,7 +11,7 @@ from rich.text import Text
 from whichvlm.engine.quantization import effective_quant_type
 from whichvlm.engine.types import CompatibilityResult
 from whichvlm.hardware.types import HardwareInfo
-from whichvlm.output import _console
+from whichvlm.output import console
 from whichvlm.output.formatting import (
     downloads_style,
     format_bytes,
@@ -32,8 +30,8 @@ MINT = "#5eead4"
 AMBER = "#fbbf24"
 
 
-def _detect_specializations(model_id: str) -> list[str]:
-    """Detect task-specialized model hints from repository name."""
+def detect_specializations(model_id: str) -> list[str]:
+
     lower = model_id.lower()
     tags: list[str] = []
     if re.search(r"(coder|codegen|starcoder|program|coding)", lower):
@@ -45,8 +43,8 @@ def _detect_specializations(model_id: str) -> list[str]:
     return tags
 
 
-def _top_pick_confidence(results: list[CompatibilityResult]) -> tuple[str, str]:
-    """Return confidence level and explanation for top pick."""
+def top_pick_confidence(results: list[CompatibilityResult]) -> tuple[str, str]:
+
     top = results[0]
     gap = (top.quality_score - results[1].quality_score) if len(results) > 1 else 999.0
     notes: list[str] = []
@@ -83,7 +81,7 @@ def _top_pick_confidence(results: list[CompatibilityResult]) -> tuple[str, str]:
         confidence = "Low"
         reason = f"direct benchmark but very close (+{gap:.1f}){risk_note}"
 
-    # Partial offload, CPU-only, and low-confidence speed estimates make the top pick less certain.
+
     if top.fit_type != "full_gpu" or top.speed_confidence == "low":
         if confidence == "High":
             confidence = "Medium"
@@ -167,7 +165,7 @@ def display_hardware(hw: HardwareInfo) -> None:
         border_style=ACCENT,
         box=box.ROUNDED,
     )
-    _console.console.print(panel)
+    console.console.print(panel)
 
 
 def display_ranking(
@@ -178,7 +176,7 @@ def display_ranking(
     empty_message: str | None = None,
 ) -> None:
     if not results:
-        _console.console.print(
+        console.console.print(
             f"[yellow]{empty_message or 'No compatible models found for your hardware.'}[/]"
         )
         return
@@ -273,7 +271,7 @@ def display_ranking(
         row_cells.append(score_str)
         table.add_row(*row_cells)
 
-    _console.console.print(table)
+    console.console.print(table)
 
     has_estimated = any(r.benchmark_status == "estimated" for r in results)
     has_self = any(r.benchmark_status == "self_reported" for r in results)
@@ -288,7 +286,7 @@ def display_ranking(
             parts.append("[yellow]Estimated / ~[/yellow] = inferred from model family")
         if has_none:
             parts.append("[red]None / ?[/red] = no benchmark data")
-        _console.console.print(f"  [dim]Score:[/dim]  {',  '.join(parts)}")
+        console.console.print(f"  [dim]Score:[/dim]  {',  '.join(parts)}")
 
     if show_status:
         has_speed_medium = any(r.speed_confidence == "medium" for r in results)
@@ -299,46 +297,46 @@ def display_ranking(
                 parts.append("[yellow]~[/yellow] = estimated tok/s range")
             if has_speed_low:
                 parts.append("[red]?[/red] = low-confidence/backend-sensitive tok/s")
-            _console.console.print(f"  [dim]Speed:[/dim]  {',  '.join(parts)}")
+            console.console.print(f"  [dim]Speed:[/dim]  {',  '.join(parts)}")
 
     has_direct = any(r.benchmark_status == "direct" for r in results)
     if not has_direct:
-        _console.console.print(
+        console.console.print(
             "  [red]No confirmed winner:[/] direct benchmark data is missing for current candidates."
         )
 
-    confidence, reason = _top_pick_confidence(results)
+    confidence, reason = top_pick_confidence(results)
     confidence_style = {
         "High": "green",
         "Medium": "yellow",
         "Low": "red",
     }[confidence]
-    _console.console.print(
+    console.console.print(
         f"  Top pick confidence: [{confidence_style}]{confidence}[/{confidence_style}] ({reason})"
     )
 
     from whichvlm.models.benchmark_sources import BENCHMARK_SNAPSHOT
 
-    _console.console.print(
+    console.console.print(
         f"  [dim]Benchmark reference: {BENCHMARK_SNAPSHOT} curated snapshot; "
         "vision scores lead VLMs, text scores are fallback evidence.[/dim]"
     )
 
-    # Close top scores should be presented as a tie, not as a decisive winner.
+
     if len(results) >= 2:
         gap = results[0].quality_score - results[1].quality_score
         if gap < 1.5:
-            _console.console.print(
+            console.console.print(
                 f"  [yellow]Note:[/] Top candidates are very close (#{1} vs #{2}: {gap:.1f} pts)."
             )
 
-    # Surface weak evidence when it affects visible top candidates.
+
     weak_top = [
         idx + 1 for idx, r in enumerate(results[:3]) if r.benchmark_status != "direct"
     ]
     if weak_top:
         joined = ", ".join(f"#{i}" for i in weak_top)
-        _console.console.print(
+        console.console.print(
             f"  [yellow]Caution:[/] Weaker benchmark evidence in top ranks: {joined}"
         )
 
@@ -347,18 +345,18 @@ def display_ranking(
     ]
     if weak_speed_top:
         joined = ", ".join(f"#{i}" for i in weak_speed_top)
-        _console.console.print(
+        console.console.print(
             f"  [yellow]Speed caution:[/] Low-confidence speed estimates in top ranks: {joined}"
         )
 
     specialized: list[str] = []
     for idx, r in enumerate(results[:10], 1):
-        tags = _detect_specializations(r.model.id)
+        tags = detect_specializations(r.model.id)
         if tags:
             joined_tags = "/".join(tags)
             specialized.append(f"#{idx} {joined_tags}")
     if specialized:
-        _console.console.print(
+        console.console.print(
             "  [yellow]Task hint:[/] Specialized models detected in ranking: "
             + ", ".join(specialized)
         )
@@ -366,4 +364,4 @@ def display_ranking(
     for i, r in enumerate(results[:3], 1):
         if r.warnings:
             for w in r.warnings:
-                _console.console.print(f"  [yellow]Warning #{i} {r.model.name}:[/] {w}")
+                console.console.print(f"  [yellow]Warning #{i} {r.model.name}:[/] {w}")

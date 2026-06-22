@@ -1,6 +1,4 @@
-"""Compatibility re-exports for output surfaces."""
-
-from whichvlm.output._console import console
+from whichvlm.output.console import console
 from whichvlm.output.json_output import (
     display_json,
     display_plan_json,

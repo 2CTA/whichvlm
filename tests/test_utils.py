@@ -1,5 +1,3 @@
-"""Tests for shared utilities."""
-
 from pathlib import Path
 
 import pytest
@@ -29,9 +27,6 @@ def test_cache_dir_ignores_relative_xdg(monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", "relative/path")
     result = cache_dir()
     assert result == Path.home() / ".cache" / "whichvlm"
-
-
-# --- parse_context_length tests ---
 
 
 def test_parse_plain_integer():

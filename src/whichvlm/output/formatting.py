@@ -1,5 +1,3 @@
-"""Shared low-level helpers: byte/param/date formatters and color blending."""
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -73,15 +71,15 @@ def parse_published_at(value: str | None) -> datetime | None:
         return None
 
 
-def _lerp_channel(a: int, b: int, t: float) -> int:
+def lerp_channel(a: int, b: int, t: float) -> int:
     return int(a + (b - a) * t)
 
 
-def _blend_hex(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> str:
+def blend_hex(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> str:
     t = max(0.0, min(1.0, t))
-    r = _lerp_channel(a[0], b[0], t)
-    g = _lerp_channel(a[1], b[1], t)
-    bch = _lerp_channel(a[2], b[2], t)
+    r = lerp_channel(a[0], b[0], t)
+    g = lerp_channel(a[1], b[1], t)
+    bch = lerp_channel(a[2], b[2], t)
     return f"#{r:02x}{g:02x}{bch:02x}"
 
 
@@ -91,7 +89,7 @@ def downloads_style(downloads: int, min_log: float, max_log: float) -> str:
     dlog = log10(max(downloads, 1))
     span = max(max_log - min_log, 1e-6)
     t = (dlog - min_log) / span
-    return _blend_hex((145, 80, 80), (55, 190, 120), t)
+    return blend_hex((145, 80, 80), (55, 190, 120), t)
 
 
 def published_style(
@@ -104,4 +102,4 @@ def published_style(
     pts = published.timestamp()
     span = max(newest_ts - oldest_ts, 1e-6)
     t = (pts - oldest_ts) / span
-    return _blend_hex((190, 85, 85), (80, 190, 110), t)
+    return blend_hex((190, 85, 85), (80, 190, 110), t)

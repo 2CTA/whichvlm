@@ -1,5 +1,3 @@
-"""Apple Silicon detection via system_profiler (macOS) and sysfs (Asahi Linux)."""
-
 from __future__ import annotations
 
 import json
@@ -11,10 +9,11 @@ from pathlib import Path
 from whichvlm.constants import GPU_BANDWIDTH
 from whichvlm.hardware.types import BackendCapability, GPUInfo
 
+# Apple probe. Reads Metal, MLX, and unified-memory facts for Apple GPUs.
 logger = logging.getLogger(__name__)
 
 
-def _lookup_bandwidth(chip_name: str) -> float | None:
+def lookup_bandwidth(chip_name: str) -> float | None:
     chip_upper = chip_name.upper()
     for key in sorted(GPU_BANDWIDTH, key=len, reverse=True):
         if key.upper() in chip_upper:
@@ -22,7 +21,7 @@ def _lookup_bandwidth(chip_name: str) -> float | None:
     return None
 
 
-def _run_system_profiler(data_type: str) -> dict | None:
+def run_system_profiler(data_type: str) -> dict | None:
     try:
         result = subprocess.run(
             ["system_profiler", data_type, "-json"],
@@ -37,24 +36,24 @@ def _run_system_profiler(data_type: str) -> dict | None:
         return None
 
 
-def _find_metal_value(obj: object) -> str | None:
+def find_metal_value(obj: object) -> str | None:
     if isinstance(obj, dict):
         for key, value in obj.items():
             if "metal" in str(key).lower() and isinstance(value, str):
                 return value
-            found = _find_metal_value(value)
+            found = find_metal_value(value)
             if found:
                 return found
     elif isinstance(obj, list):
         for item in obj:
-            found = _find_metal_value(item)
+            found = find_metal_value(item)
             if found:
                 return found
     return None
 
 
-def _metal_capability(display_data: dict | None) -> BackendCapability:
-    metal_value = _find_metal_value(display_data) if display_data else None
+def metal_capability(display_data: dict | None) -> BackendCapability:
+    metal_value = find_metal_value(display_data) if display_data else None
     if not metal_value:
         return BackendCapability(
             "metal",
@@ -67,20 +66,21 @@ def _metal_capability(display_data: dict | None) -> BackendCapability:
     return BackendCapability("metal", True, version=metal_value, details=metal_value)
 
 
-def _apple_backend_capabilities(display_data: dict | None) -> list[BackendCapability]:
+def apple_backend_capabilities(display_data: dict | None) -> list[BackendCapability]:
     return [
-        _metal_capability(display_data),
+        metal_capability(display_data),
         BackendCapability("mps", True, details="PyTorch MPS-compatible Apple Silicon"),
         BackendCapability("mlx", True, details="MLX-ready Apple Silicon"),
     ]
 
 
 def detect_apple_gpu() -> list[GPUInfo]:
-    data = _run_system_profiler("SPHardwareDataType")
+    # macOS probe. Reads system_profiler and builds one Apple GPU record.
+    data = run_system_profiler("SPHardwareDataType")
     if data is None:
         logger.debug("system_profiler not available (not macOS)")
         return []
-    display_data = _run_system_profiler("SPDisplaysDataType")
+    display_data = run_system_profiler("SPDisplaysDataType")
 
     try:
         hw_items = data["SPHardwareDataType"]
@@ -103,9 +103,9 @@ def detect_apple_gpu() -> list[GPUInfo]:
                 name=chip_name,
                 vendor="apple",
                 vram_bytes=unified_memory,
-                memory_bandwidth_gbps=_lookup_bandwidth(chip_name),
+                memory_bandwidth_gbps=lookup_bandwidth(chip_name),
                 shared_memory=True,
-                backend_capabilities=_apple_backend_capabilities(display_data),
+                backend_capabilities=apple_backend_capabilities(display_data),
                 neural_engine_available=True,
             )
         ]
@@ -114,13 +114,10 @@ def detect_apple_gpu() -> list[GPUInfo]:
         return []
 
 
-# ---- Asahi Linux (Apple Silicon on Linux) ----
-
-_ASAHI_DRIVER_NAMES = ("asahi", "apple")
+ASAHI_DRIVER_NAMES = ("asahi", "apple")
 
 
-def _chip_name_from_devicetree() -> str | None:
-    """Extract Apple chip name from Linux device tree."""
+def chip_name_from_devicetree() -> str | None:
     try:
         raw = Path("/sys/firmware/devicetree/base/model").read_bytes()
         model = raw.decode("utf-8", errors="replace").strip().rstrip("\x00")
@@ -137,10 +134,7 @@ def _chip_name_from_devicetree() -> str | None:
 def detect_apple_gpu_linux(
     drm_path: Path = Path("/sys/class/drm"),
 ) -> list[GPUInfo]:
-    """Detect Apple Silicon GPU on Linux (Asahi driver).
-
-    Returns empty list when no Asahi/Apple DRM device is found.
-    """
+    # Asahi probe. Maps Linux Apple DRM devices into shared-memory GPU info.
     try:
         cards = sorted(drm_path.glob("card[0-9]*"))
     except OSError:
@@ -152,12 +146,12 @@ def detect_apple_gpu_linux(
             driver_name = driver.resolve().name
         except OSError:
             continue
-        if driver_name not in _ASAHI_DRIVER_NAMES:
+        if driver_name not in ASAHI_DRIVER_NAMES:
             continue
 
-        chip_name = _chip_name_from_devicetree() or "Apple Silicon"
+        chip_name = chip_name_from_devicetree() or "Apple Silicon"
 
-        # Unified memory — total system RAM is shared with the GPU.
+
         import psutil
 
         unified_memory = psutil.virtual_memory().total
@@ -167,7 +161,7 @@ def detect_apple_gpu_linux(
                 name=chip_name,
                 vendor="apple",
                 vram_bytes=unified_memory,
-                memory_bandwidth_gbps=_lookup_bandwidth(chip_name),
+                memory_bandwidth_gbps=lookup_bandwidth(chip_name),
                 shared_memory=True,
                 backend_capabilities=[
                     BackendCapability("vulkan", True, details="Asahi Linux driver"),

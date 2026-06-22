@@ -1,5 +1,3 @@
-"""Tests for Windows CPU name fallback detection."""
-
 from __future__ import annotations
 
 import subprocess

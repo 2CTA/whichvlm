@@ -25,17 +25,17 @@ class CompatibilityResult:
     can_run: bool
     vram_required_bytes: int
     vram_available_bytes: int
-    offload_ratio: float = 0.0  # 0.0-1.0 fraction of weights spilled to CPU RAM
+    offload_ratio: float = 0.0
     estimated_tok_per_sec: float | None = None
     speed_confidence: SpeedConfidence = "medium"
     speed_range_tok_per_sec: tuple[float, float] | None = None
     speed_notes: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-    quality_score: float = 0.0  # 0-100 for ranking
+    quality_score: float = 0.0
     fit_type: FitType = "full_gpu"
     benchmark_status: BenchmarkStatus = "none"
     benchmark_source: BenchmarkSource = "none"
-    benchmark_confidence: float = 0.0  # 0.0-1.0 from BenchmarkEvidence
-    context_fits: bool = True  # False when known model max context < requested
+    benchmark_confidence: float = 0.0
+    context_fits: bool = True
     uses_multi_gpu: bool = False
     multi_gpu_effective_vram_bytes: int | None = None

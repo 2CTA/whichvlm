@@ -51,8 +51,8 @@ def test_nvidia_smi_fallback_applies_rtx_a3000_laptop_catalog(monkeypatch):
 
 
 def test_nvidia_smi_fallback_resolves_laptop_5090_via_dbgpu(monkeypatch):
-    # A laptop RTX 5090 must not inherit the desktop
-    # 1792 GB/s bandwidth. dbgpu carries "GeForce RTX 5090 Mobile" (~896).
+
+
     real_import = builtins.__import__
 
     def fake_import(name, *args, **kwargs):
@@ -72,7 +72,7 @@ def test_nvidia_smi_fallback_resolves_laptop_5090_via_dbgpu(monkeypatch):
     assert gpus[0].name == "NVIDIA GeForce RTX 5090 Laptop GPU"
     bw = gpus[0].memory_bandwidth_gbps
     assert bw is not None
-    assert bw < 1500.0  # mobile ~896, not the 1792 desktop value
+    assert bw < 1500.0
 
 
 def test_nvidia_smi_fallback_when_nvml_init_fails(monkeypatch):

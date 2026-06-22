@@ -1,5 +1,3 @@
-"""Model ranking: score and select the best models for the user's hardware."""
-
 from __future__ import annotations
 
 import math
@@ -30,30 +28,23 @@ from whichvlm.models.benchmark import (
 )
 from whichvlm.models.types import GGUFVariant, ModelInfo
 
-# Pre-compile lineage regex tables once at import time.
-_LINEAGE_REGEX: dict[str, list[tuple[re.Pattern[str], int]]] = {
+# Ranking core. Expands variants, scores fit, and orders final picks.
+
+LINEAGE_REGEX: dict[str, list[tuple[re.Pattern[str], int]]] = {
     family: [(re.compile(pat), idx) for pat, idx in entries]
     for family, entries in MODEL_LINEAGE_VERSIONS.items()
 }
-_LINEAGE_FAMILY_MAX: dict[str, int] = {
-    family: max(idx for _, idx in entries) for family, entries in _LINEAGE_REGEX.items()
+LINEAGE_FAMILY_MAX: dict[str, int] = {
+    family: max(idx for _, idx in entries) for family, entries in LINEAGE_REGEX.items()
 }
-_MULTI_GPU_SPEED_FACTOR = 0.70
+MULTI_GPU_SPEED_FACTOR = 0.70
 
 
-def _family_selection_key(
+def family_selection_key(
     result: CompatibilityResult,
     require_direct_top: bool,
 ) -> tuple[float]:
-    """Family-level selection key — single composite score.
-
-    ``quality_score`` already includes the runtime fit penalty and speed
-    adjustment. Keep final selection close to that displayed score so strong
-    partial-offload candidates do not get discounted again while sorting.
-
-    - ``direct_bonus`` (+5) gives independent external benchmark evidence a
-      small edge at the same fit; cannot overturn a 6+ point quality gap
-    """
+    # Family sort key. Keeps final ordering close to the shown score.
     if require_direct_top and result.benchmark_status == "direct":
         direct_bonus = 5.0
     else:
@@ -63,8 +54,8 @@ def _family_selection_key(
     return (result.quality_score + direct_bonus + cpu_penalty + ctx_penalty,)
 
 
-def _partial_offload_quality_factor(model: ModelInfo, offload_ratio: float) -> float:
-    """Discount partial-offload candidates by how much leaves VRAM."""
+def partial_offload_quality_factor(model: ModelInfo, offload_ratio: float) -> float:
+
     ratio = max(0.0, min(1.0, offload_ratio))
     if ratio >= 0.75:
         factor = 0.42
@@ -77,10 +68,7 @@ def _partial_offload_quality_factor(model: ModelInfo, offload_ratio: float) -> f
     else:
         factor = 0.86
 
-    # MoE offload is more nuanced: inactive experts and router/runtime
-    # placement do not hurt equally. If the GPU can plausibly hold the
-    # active expert working set, do not treat inactive-expert spill like
-    # dense-layer spill.
+
     if model.is_moe and model.parameter_count_active:
         active_ratio = (
             model.parameter_count_active / model.parameter_count
@@ -106,10 +94,7 @@ def _partial_offload_quality_factor(model: ModelInfo, offload_ratio: float) -> f
     return factor
 
 
-# Per-source benchmark weight applied to the raw 0-100 score before it is
-# combined with size, quant penalty, etc. The widest gap is between "direct"
-# (independent external benchmark) and "self_reported" (uploader card claim).
-_SOURCE_WEIGHTS: dict[str, float] = {
+SOURCE_WEIGHTS: dict[str, float] = {
     "direct": 0.62,
     "base_model": 0.55,
     "variant": 0.50,
@@ -119,41 +104,27 @@ _SOURCE_WEIGHTS: dict[str, float] = {
 }
 
 
-_SYNTHETIC_QUANTS = ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0")
-_PREQUANTIZED_REPO_RE = re.compile(
+SYNTHETIC_QUANTS = ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0")
+PREQUANTIZED_REPO_RE = re.compile(
     r"-(awq|gptq|bnb|fp8|fp16|bf16|mxfp4|nvfp4|int4|int8|4bit|8bit|gguf)$",
     re.IGNORECASE,
 )
 
 
-def _synthesize_variants_for_official_repo(
+def synthesize_variants_for_official_repo(
     model: ModelInfo, quant_filter_upper: str | None
 ) -> list[GGUFVariant]:
-    """Return synthetic GGUF variants for popular safetensors-only repos.
-
-    HuggingFace doesn't always index GGUF siblings for an official model
-    (e.g. ``Qwen/Qwen3.6-27B`` ships only safetensors). Without synthetic variants, we'd
-    score these models at BF16 file sizes (~2x larger than realistic), which
-    forces a partial_offload penalty on otherwise-runnable mid-size models.
-
-    Skips repos that already advertise a specific quantization in their name
-    (``...-AWQ``, ``...-GPTQ``, ``...-FP8`` etc.) — those are non-GGUF formats
-    and synthesizing a Q4_K_M alternative would misrepresent what the repo
-    actually contains.
-    """
-    # Guardrail: synthetic GGUF variants are text-model-only. VLMs need a
-    # concrete GGUF package with processor/projector support before ranking it
-    # as a runnable llama.cpp artifact.
-    if "vision" in _detect_specializations(model):
+    # Synthetic GGUF layer. Makes safetensors-only repos rank like real quants.
+    if "vision" in detect_specializations(model):
         return []
 
     org = model.id.split("/", 1)[0] if "/" in model.id else ""
-    if org not in _OFFICIAL_ORGS:
+    if org not in OFFICIAL_ORGS:
         return []
-    if _PREQUANTIZED_REPO_RE.search(model.id):
+    if PREQUANTIZED_REPO_RE.search(model.id):
         return []
     out: list[GGUFVariant] = []
-    for quant in _SYNTHETIC_QUANTS:
+    for quant in SYNTHETIC_QUANTS:
         if quant_filter_upper and quant != quant_filter_upper:
             continue
         bpw = QUANT_BYTES_PER_WEIGHT.get(quant, 0.5625)
@@ -167,14 +138,14 @@ def _synthesize_variants_for_official_repo(
     return out
 
 
-def _iter_candidate_variants(
+def iter_candidate_variants(
     model: ModelInfo,
     quant_filter: str | None = None,
 ) -> list[GGUFVariant | None]:
     quant_filter_upper = quant_filter.upper() if quant_filter else None
 
     if not model.gguf_variants:
-        synthetic = _synthesize_variants_for_official_repo(model, quant_filter_upper)
+        synthetic = synthesize_variants_for_official_repo(model, quant_filter_upper)
         if synthetic:
             return synthetic
         quant_type = effective_quant_type(model, None)
@@ -190,10 +161,9 @@ def _iter_candidate_variants(
         if not candidates:
             return []
     else:
-        # Sub-3-bit GGUFs lose 25-60% of model quality and rarely produce
-        # a meaningfully better candidate than a smaller model at Q4_K_M.
-        # Exclude them unless explicitly requested via --quant.
-        _EXTREME_QUANTS = {
+
+
+        EXTREME_QUANTS = {
             "Q2_K",
             "Q2_0",
             "Q1_0",
@@ -207,7 +177,7 @@ def _iter_candidate_variants(
             "IQ1_S",
         }
         filtered = [
-            v for v in candidates if v.quant_type.upper() not in _EXTREME_QUANTS
+            v for v in candidates if v.quant_type.upper() not in EXTREME_QUANTS
         ]
         if filtered:
             candidates = filtered
@@ -223,7 +193,7 @@ def _iter_candidate_variants(
     return candidates
 
 
-_OFFICIAL_ORGS = frozenset(
+OFFICIAL_ORGS = frozenset(
     {
         "Qwen",
         "meta-llama",
@@ -237,8 +207,8 @@ _OFFICIAL_ORGS = frozenset(
         "apple",
         "CohereForAI",
         "bigcode",
-        # 2025+ frontier open-weights labs that publish safetensors-only
-        # repos which the community immediately converts to GGUF.
+
+
         "openai",
         "zai-org",
         "moonshotai",
@@ -250,29 +220,23 @@ _OFFICIAL_ORGS = frozenset(
     }
 )
 
-# Ranking now has VLM package/back-end gates and a curated vision benchmark
-# tier, but quality weights remain conservative until the inventory has broader
-# multimodal benchmark coverage.
 
-# Orgs whose repositories ship CI fixtures, deprecated research artifacts, or
-# debug binaries that are not viable production LLMs. Exclude them outright so
-# they cannot occupy ranking slots regardless of download counts.
-_EXCLUDED_ORGS = frozenset(
+EXCLUDED_ORGS = frozenset(
     {
-        "openai-community",  # gpt2 family, 2019 research
-        "distilbert",  # distilgpt2 etc.
-        "facebook",  # opt-125m research scaffolds
-        "EleutherAI",  # pythia/gpt-neo research
-        "trl-internal-testing",  # TRL CI fixtures
-        "hmellor",  # random tiny test models
-        "HuggingFaceH4",  # often staging / fixtures
+        "openai-community",
+        "distilbert",
+        "facebook",
+        "EleutherAI",
+        "trl-internal-testing",
+        "hmellor",
+        "HuggingFaceH4",
         "transformersbook",
-        "togethercomputer",  # mostly inference endpoints, no GGUFs
+        "togethercomputer",
     }
 )
 
-# Substring patterns in *names* that strongly suggest non-production usage.
-_EXCLUDED_NAME_PATTERNS = (
+
+EXCLUDED_NAME_PATTERNS = (
     "tiny-",
     "-tiny",
     "tiny_",
@@ -286,13 +250,8 @@ _EXCLUDED_NAME_PATTERNS = (
     "ci-",
 )
 
-# Naming patterns that indicate a fine-tune / merge / "uncensoring" derivative
-# of a real base model. These derivatives inherit the base model's benchmark
-# score via line_interp, but the derivative itself is rarely benchmarked
-# independently and frequently degrades quality. Apply a soft score penalty
-# rather than full exclusion so they can still surface when nothing better is
-# available.
-_DUBIOUS_DERIVATIVE_PATTERNS = (
+
+DUBIOUS_DERIVATIVE_PATTERNS = (
     "heretic",
     "abliterat",
     "uncensored",
@@ -325,70 +284,57 @@ _DUBIOUS_DERIVATIVE_PATTERNS = (
 )
 
 
-def _derivative_name_penalty(model_id: str) -> float:
-    """Return a score penalty (in raw quality points) for fine-tune /
-    "uncensored" / merge derivatives that ride on a real base model's
-    benchmark line. The penalty is gentle (≤ 12pt) so a derivative can
-    still win when its size class has no better option.
-    """
+def derivative_name_penalty(model_id: str) -> float:
+
     if not model_id:
         return 0.0
     lower = model_id.lower()
     name = lower.split("/", 1)[1] if "/" in lower else lower
-    for pat in _DUBIOUS_DERIVATIVE_PATTERNS:
+    for pat in DUBIOUS_DERIVATIVE_PATTERNS:
         if pat in name:
             return -10.0
     return 0.0
 
 
-def _is_excluded_model(model_id: str) -> bool:
-    """Return True for CI/research/fixture models that should never rank."""
+def is_excluded_model(model_id: str) -> bool:
+
     if not model_id:
         return True
     org = model_id.split("/", 1)[0] if "/" in model_id else ""
-    if org in _EXCLUDED_ORGS:
+    if org in EXCLUDED_ORGS:
         return True
     lower = model_id.lower()
     name = lower.split("/", 1)[1] if "/" in lower else lower
-    for pat in _EXCLUDED_NAME_PATTERNS:
+    for pat in EXCLUDED_NAME_PATTERNS:
         if pat in name:
             return True
     return False
 
 
-def _generation_bonus(model_id: str) -> float:
-    """Return a small additive bonus reflecting how new a model's
-    generation is within its family. The newest version of each
-    recognized family gets +MODEL_GENERATION_BONUS_MAX. Older
-    versions get a smaller bonus (or a small penalty for the
-    legacy generation). Unknown families return 0.
+def generation_bonus(model_id: str) -> float:
 
-    This is purely an additive correction to the quality score
-    and is small enough that strong benchmark evidence will still
-    dominate.
-    """
     if not model_id:
         return 0.0
     lower = model_id.lower()
     best_bonus = 0.0
-    for family, patterns in _LINEAGE_REGEX.items():
+    for family, patterns in LINEAGE_REGEX.items():
         for regex, idx in patterns:
             if regex.search(lower):
-                top = _LINEAGE_FAMILY_MAX[family]
+                top = LINEAGE_FAMILY_MAX[family]
                 if top <= 1:
                     contribution = 0.0
                 else:
-                    # Map oldest -> -PENALTY_MAX, newest -> +BONUS_MAX.
-                    norm = (idx - 1) / (top - 1)  # 0 .. 1
+
+                    norm = (idx - 1) / (top - 1)
                     span = MODEL_GENERATION_BONUS_MAX + MODEL_GENERATION_PENALTY_MAX
                     contribution = norm * span - MODEL_GENERATION_PENALTY_MAX
                 if abs(contribution) > abs(best_bonus):
                     best_bonus = contribution
-                break  # first match wins for this family
+                break
     return best_bonus
 
 
-def _detect_specializations(model: ModelInfo) -> set[str]:
+def detect_specializations(model: ModelInfo) -> set[str]:
     lower = " ".join(
         [model.id, model.hf_pipeline_tag or "", *model.tags, model.architecture]
     ).lower()
@@ -406,9 +352,9 @@ def _detect_specializations(model: ModelInfo) -> set[str]:
     return tags
 
 
-def _matches_profile(model: ModelInfo, task_profile: str) -> bool:
+def matches_profile(model: ModelInfo, task_profile: str) -> bool:
     profile = task_profile.lower()
-    tags = _detect_specializations(model)
+    tags = detect_specializations(model)
     if profile == "any":
         return True
     if profile == "general":
@@ -416,26 +362,19 @@ def _matches_profile(model: ModelInfo, task_profile: str) -> bool:
     return profile in tags
 
 
-def _effective_params_b(model: ModelInfo) -> float:
-    """Return effective parameter size in billions."""
+def effective_params_b(model: ModelInfo) -> float:
+
     if model.is_moe and model.parameter_count_active:
         return model.parameter_count_active / 1e9
     return model.parameter_count / 1e9
 
 
-def _knowledge_capacity_b(model: ModelInfo) -> float:
-    """Return the knowledge capacity in billions for size filtering.
+def knowledge_capacity_b(model: ModelInfo) -> float:
 
-    For dense models this is the parameter count. For MoE models, total
-    parameters (all expert weights live in VRAM and contribute to the
-    knowledge encoded in the model) is the right yardstick — ``min_params``
-    is asking "how much does this model know?" not "how much does it
-    compute per token".
-    """
     return model.parameter_count / 1e9
 
 
-def _passes_evidence_filter(source: str, evidence_filter: str) -> bool:
+def passes_evidence_filter(source: str, evidence_filter: str) -> bool:
     mode = evidence_filter.lower()
     if mode == "strict":
         return source == "direct"
@@ -444,20 +383,20 @@ def _passes_evidence_filter(source: str, evidence_filter: str) -> bool:
     return True
 
 
-def _is_gguf_only_backend(hardware: HardwareInfo) -> bool:
+def is_gguf_only_backend(hardware: HardwareInfo) -> bool:
     if not hardware.gpus:
         return True
     if hardware.os == "darwin":
         return False
 
-    # Linux + NVIDIA CUDA can run AWQ/GPTQ and other non-GGUF formats.
+
     has_linux_nvidia = hardware.os == "linux" and any(
         g.vendor == "nvidia" for g in hardware.gpus
     )
     return not has_linux_nvidia
 
 
-def _model_artifact_backends(model: ModelInfo) -> set[str]:
+def model_artifact_backends(model: ModelInfo) -> set[str]:
     backends: set[str] = set()
     for artifact in model.artifacts:
         backends.update(b.lower() for b in artifact.backend_support)
@@ -480,7 +419,7 @@ def _model_artifact_backends(model: ModelInfo) -> set[str]:
     return backends
 
 
-def _hardware_backend_names(hardware: HardwareInfo) -> set[str]:
+def hardware_backend_names(hardware: HardwareInfo) -> set[str]:
     backends = {
         capability.name.lower()
         for capability in hardware.backend_capabilities
@@ -495,7 +434,7 @@ def _hardware_backend_names(hardware: HardwareInfo) -> set[str]:
     return backends
 
 
-def _model_backend_compatible(
+def model_backend_compatible(
     model: ModelInfo,
     variant: GGUFVariant | None,
     hardware: HardwareInfo,
@@ -503,17 +442,17 @@ def _model_backend_compatible(
     model_backends: set[str] | None = None,
 ) -> bool:
     if hardware_backends is None:
-        hardware_backends = _hardware_backend_names(hardware)
+        hardware_backends = hardware_backend_names(hardware)
     if variant is not None:
         return bool(hardware_backends & {"metal", "cuda", "vulkan", "cpu"})
     if model_backends is None:
-        model_backends = _model_artifact_backends(model)
+        model_backends = model_artifact_backends(model)
     if not model_backends:
         return True
     return bool(model_backends & hardware_backends)
 
 
-def _backend_priority_bonus(
+def backend_priority_bonus(
     model: ModelInfo,
     variant: GGUFVariant | None,
     hardware: HardwareInfo,
@@ -523,7 +462,7 @@ def _backend_priority_bonus(
         return -4.0
     best_gpu = max(hardware.gpus, key=lambda g: g.vram_bytes)
     if model_backends is None:
-        model_backends = _model_artifact_backends(model)
+        model_backends = model_artifact_backends(model)
 
     if best_gpu.vendor == "apple" and hardware.os == "darwin":
         if has_backend(best_gpu, "mlx") and "mlx" in model_backends:
@@ -550,7 +489,7 @@ def _backend_priority_bonus(
     return 0.0
 
 
-def _compute_quality_score(
+def compute_quality_score(
     model: ModelInfo,
     variant: GGUFVariant | None,
     tok_per_sec: float,
@@ -561,18 +500,7 @@ def _compute_quality_score(
     benchmark_avg: float | None = None,
     benchmark_source: str = "none",
 ) -> float:
-    """Compute a quality score (0-100) for ranking.
 
-    Factors:
-    - Benchmark score weighted by source tier
-    - Model size (log scale)
-    - Quantization penalty
-    - Fit type penalty (partial offload / CPU-only heavily penalized)
-    - Speed bonus / penalty (practical usability)
-    - Popularity (downloads/likes) as soft tie-breaker
-    - Source lineage signal
-    - Generation-lineage bonus (newest family member > legacy generation)
-    """
     params_b = model.parameter_count / 1e9
     if model.is_moe and model.parameter_count_active:
         effective_b = model.parameter_count_active / 1e9
@@ -582,13 +510,7 @@ def _compute_quality_score(
     if effective_b <= 0:
         return 0.0
 
-    # Benchmarks lead, but raw model size also matters: a 70B at Q4_K_M
-    # carries far more world knowledge than a 7B Q4_K_M even when the
-    # External score gap is modest. For MoE models, knowledge capacity
-    # tracks *total* params (every expert contributes to what the model
-    # knows), while routing keeps per-token compute small. Use total params
-    # for the size score and let the speed term separately reward MoE
-    # efficiency.
+
     size_basis_b = params_b
     size_score = 4.2 * math.log2(max(size_basis_b, 0.5)) + 9
     size_score = min(size_score, 35)
@@ -598,31 +520,31 @@ def _compute_quality_score(
     is_self_reported = benchmark_source == "self_reported"
     is_inherited = benchmark_source in {"variant", "base_model", "line_interp"}
 
-    bench_weight = _SOURCE_WEIGHTS.get(benchmark_source, 0.0)
+    bench_weight = SOURCE_WEIGHTS.get(benchmark_source, 0.0)
     benchmark_score = 0.0
     if has_benchmark:
         raw = min(100.0, benchmark_avg)
         benchmark_score = raw * bench_weight
 
-    # Quantization penalty
+
     quant_penalty = quant_quality_penalty(model, variant)
     quality_core = (benchmark_score + size_score) * (1 - quant_penalty)
 
-    # Weak / unverifiable evidence gets an extra discount.
+
     if not has_benchmark:
         quality_core *= 0.55
     elif is_self_reported:
-        quality_core *= 0.55  # uploader claim, easily fabricated
+        quality_core *= 0.55
     elif is_inherited:
         quality_core *= 0.78
 
-    # Runtime form factor penalty
+
     if fit_type == "partial_offload":
-        quality_core *= _partial_offload_quality_factor(model, offload_ratio)
+        quality_core *= partial_offload_quality_factor(model, offload_ratio)
     elif fit_type == "cpu_only":
         quality_core *= 0.50
 
-    # Speed acts as a usability gate rather than a ranking primary.
+
     required_speed = (
         8.0
         if fit_type == "full_gpu"
@@ -644,7 +566,7 @@ def _compute_quality_score(
         else:
             speed_score = -8.0
 
-    # Popularity is a tie-breaker, never primary.
+
     downloads = max(model.downloads, family_downloads)
     likes = max(model.likes, family_likes)
     pop_score_raw = 0.0
@@ -656,21 +578,21 @@ def _compute_quality_score(
     if is_direct:
         pop_weight = 0.0
     elif is_self_reported:
-        pop_weight = 0.4  # uploader claim is weak — popularity acts as sanity check
+        pop_weight = 0.4
     elif has_benchmark:
         pop_weight = 0.2
     else:
         pop_weight = 0.6
     pop_score = pop_score_raw * pop_weight
 
-    # Source-trust bonus stays small.
+
     source_bonus_raw = 0.0
     org = model.id.split("/")[0] if "/" in model.id else ""
-    if org in _OFFICIAL_ORGS:
+    if org in OFFICIAL_ORGS:
         source_bonus_raw = 5.0
     elif model.base_model:
         base_org = model.base_model.split("/")[0] if "/" in model.base_model else ""
-        if base_org in _OFFICIAL_ORGS:
+        if base_org in OFFICIAL_ORGS:
             source_bonus_raw = 2.5
 
     if is_direct:
@@ -683,20 +605,17 @@ def _compute_quality_score(
         source_weight = 0.6
     source_bonus = source_bonus_raw * source_weight
 
-    # Generation lineage bonus: newest in a known family gets a small boost,
-    # confirmed legacy versions get a small penalty. Helps surface Qwen3.6,
-    # DeepSeek V4, Gemma 4, etc. against accumulated download leaders.
-    gen_bonus = _generation_bonus(model.id)
-    # When benchmark evidence is missing or self-reported, the lineage signal
-    # carries more weight (we have less else to go on).
+
+    gen_bonus = generation_bonus(model.id)
+
+
     if not has_benchmark or is_self_reported:
         gen_bonus *= 1.5
     elif is_direct:
         gen_bonus *= 0.6
 
-    # Penalty for "uncensored / abliterated / heretic / RP" derivatives that
-    # ride on a base model's score without independent benchmarking.
-    derivative_penalty = _derivative_name_penalty(model.id)
+
+    derivative_penalty = derivative_name_penalty(model.id)
 
     return max(
         0.0,
@@ -727,20 +646,18 @@ def rank_models(
     fit_filter: str = "any",
     vision_workload: VisionWorkload | None = None,
 ) -> list[CompatibilityResult]:
-    """Rank models by quality for the given hardware. Returns top N results."""
+    # Main rank pass. Scores every candidate against hardware and evidence.
+
     results: list[CompatibilityResult] = []
-    gguf_only_backend = _is_gguf_only_backend(hardware)
+    gguf_only_backend = is_gguf_only_backend(hardware)
     if vision_workload is None and task_profile.lower() == "vision":
         vision_workload = VisionWorkload(context_length=context_length)
 
-    # Pre-compute max downloads/likes per family so GGUF converters
-    # inherit popularity from the official base model
+
     family_max_downloads: dict[str, int] = {}
     family_max_likes: dict[str, int] = {}
-    # Track the parameter count of the family's dominant member (highest
-    # downloads). Used to detect quasi-fork uploads whose params differ
-    # drastically from the family proper (e.g. a 6.6B MTP-head extracted
-    # from a 158B base ending up tagged with the same family_id).
+
+
     family_dominant_params: dict[str, int] = {}
     family_dominant_downloads: dict[str, int] = {}
     for m in models:
@@ -766,23 +683,23 @@ def rank_models(
     for gpu in hardware.gpus:
         if best_gpu is None or gpu.vram_bytes > best_gpu.vram_bytes:
             best_gpu = gpu
-    hardware_backends = _hardware_backend_names(hardware)
+    hardware_backends = hardware_backend_names(hardware)
 
     for model in sorted_models:
-        if _is_excluded_model(model.id):
+        if is_excluded_model(model.id):
             continue
-        if not _matches_profile(model, task_profile):
+        if not matches_profile(model, task_profile):
             continue
-        if min_params_b is not None and _knowledge_capacity_b(model) < min_params_b:
+        if min_params_b is not None and knowledge_capacity_b(model) < min_params_b:
             continue
 
-        candidates = _iter_candidate_variants(model, quant_filter)
+        candidates = iter_candidate_variants(model, quant_filter)
         if not candidates:
             continue
 
         fid = model.family_id
-        model_backends = _model_artifact_backends(model)
-        # Uploader-reported evalResults are only ever last-resort evidence.
+        model_backends = model_artifact_backends(model)
+
         self_reported = None
         if isinstance(model.benchmark_scores, dict):
             v = model.benchmark_scores.get("hf_eval")
@@ -804,12 +721,8 @@ def rank_models(
                 self_reported_score=self_reported,
                 actual_params_b=actual_params_b,
             )
-            # Family-size sanity check: if this model inherited benchmarks
-            # via family/base_model lookup but its own params disagree
-            # sharply with the family's dominant member, reject the
-            # inheritance. Catches MTP heads / draft / abliterated forks
-            # that share a family_id with their base but are effectively
-            # different models.
+
+
             if bench_evidence.source in ("variant", "base_model", "line_interp"):
                 dom_params = family_dominant_params.get(model.family_id)
                 if dom_params and model.parameter_count and dom_params > 0:
@@ -818,15 +731,15 @@ def rank_models(
                         bench_evidence = BenchmarkEvidence(
                             score=None, confidence=0.0, source="none"
                         )
-        if not _passes_evidence_filter(bench_evidence.source, evidence_filter):
+        if not passes_evidence_filter(bench_evidence.source, evidence_filter):
             continue
 
-        # Score all variants and keep the strongest runnable form for this model.
+
         best_for_model: CompatibilityResult | None = None
         for variant in candidates:
             if gguf_only_backend and variant is None and "mlx" not in model_backends:
                 continue
-            if not _model_backend_compatible(
+            if not model_backend_compatible(
                 model,
                 variant,
                 hardware,
@@ -850,7 +763,7 @@ def rank_models(
                 model, variant, best_gpu, compat.fit_type
             )
             if compat.uses_multi_gpu:
-                tok_per_sec *= _MULTI_GPU_SPEED_FACTOR
+                tok_per_sec *= MULTI_GPU_SPEED_FACTOR
             if min_speed is not None and tok_per_sec < min_speed:
                 continue
 
@@ -859,9 +772,8 @@ def rank_models(
                 if bench_evidence.source in {"direct", "self_reported"}:
                     bench_avg = bench_evidence.score
                 else:
-                    # Inherited evidence: scale by confidence so weak inheritance
-                    # (e.g. line_interp at conf 0.22) gets discounted on top of
-                    # the per-source weight in _compute_quality_score.
+
+
                     confidence = max(0.0, min(1.0, bench_evidence.confidence))
                     bench_avg = bench_evidence.score * (0.75 + 0.25 * confidence)
 
@@ -889,7 +801,7 @@ def rank_models(
                     "PCIe/NVLink bandwidth, and backend support; this estimate "
                     "does not assume ideal scaling."
                 )
-            compat.quality_score = _compute_quality_score(
+            compat.quality_score = compute_quality_score(
                 model,
                 variant,
                 tok_per_sec,
@@ -903,7 +815,7 @@ def rank_models(
             compat.quality_score = min(
                 100.0,
                 compat.quality_score
-                + _backend_priority_bonus(
+                + backend_priority_bonus(
                     model,
                     variant,
                     hardware,
@@ -935,10 +847,10 @@ def rank_models(
             existing = next(
                 (r for r in results if r.model.family_id == family_key), None
             )
-            if existing and _family_selection_key(
+            if existing and family_selection_key(
                 best_for_model,
                 require_direct_top,
-            ) > _family_selection_key(existing, require_direct_top):
+            ) > family_selection_key(existing, require_direct_top):
                 results.remove(existing)
                 results.append(best_for_model)
             continue
@@ -948,28 +860,19 @@ def rank_models(
 
     if require_direct_top:
         results.sort(
-            key=lambda r: _family_selection_key(r, require_direct_top),
+            key=lambda r: family_selection_key(r, require_direct_top),
             reverse=True,
         )
     else:
         results.sort(
-            key=lambda r: _family_selection_key(r, require_direct_top), reverse=True
+            key=lambda r: family_selection_key(r, require_direct_top), reverse=True
         )
 
-    # Junk floor: when at least one candidate scores ≥ 30, drop anything
-    # below 20. This stops Q1_0 / Q2_0 derivatives (and other extreme-quant
-    # repos) from occupying ranking slots when a *real* option exists. If
-    # every candidate is junk (very tiny GPU + no fitting Q4) we keep the
-    # whole list so the user still sees what they can run.
+
     if any(r.quality_score >= 30 for r in results):
         results = [r for r in results if r.quality_score >= 20]
 
-    # Speed floor: a model that scores well on quality but runs at <1.5 t/s
-    # in practice (e.g. DeepSeek-V4-Flash 158B partial-offloading 100GB to
-    # CPU RAM from a 4GB GTX 1650) is not actually usable. Drop these
-    # candidates unless every remaining option is sub-1.5 too, in which
-    # case the user has hardware that cannot run anything responsively
-    # and we still want to show what's available.
+
     if any(r.estimated_tok_per_sec >= 5.0 for r in results):
         results = [r for r in results if r.estimated_tok_per_sec >= 1.5]
 

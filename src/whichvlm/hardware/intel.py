@@ -1,5 +1,3 @@
-"""Intel integrated GPU detection on Linux."""
-
 from __future__ import annotations
 
 import logging
@@ -11,14 +9,14 @@ from whichvlm.hardware.types import GPUInfo
 logger = logging.getLogger(__name__)
 
 
-_DISPLAY_CLASSES = (
+DISPLAY_CLASSES = (
     "vga compatible controller",
     "3d controller",
     "display controller",
 )
 
 
-def _normalize_lspci_name(line: str) -> str:
+def normalize_lspci_name(line: str) -> str:
     parts = [p.strip() for p in line.split('"') if p.strip() and p.strip() != "\t"]
     for i, part in enumerate(parts):
         if part.lower() == "intel corporation" and i + 1 < len(parts):
@@ -26,7 +24,7 @@ def _normalize_lspci_name(line: str) -> str:
     return "Intel Integrated Graphics"
 
 
-def _detect_from_lspci() -> list[str]:
+def detect_from_lspci() -> list[str]:
     try:
         result = subprocess.run(
             ["lspci", "-mm"],
@@ -46,17 +44,17 @@ def _detect_from_lspci() -> list[str]:
     for line in result.stdout.splitlines():
         line_lower = line.lower()
         if "intel" not in line_lower or not any(
-            display_class in line_lower for display_class in _DISPLAY_CLASSES
+            display_class in line_lower for display_class in DISPLAY_CLASSES
         ):
             continue
-        name = _normalize_lspci_name(line)
+        name = normalize_lspci_name(line)
         if name not in seen:
             names.append(name)
             seen.add(name)
     return names
 
 
-def _detect_from_sysfs(drm_path: Path = Path("/sys/class/drm")) -> list[str]:
+def detect_from_sysfs(drm_path: Path = Path("/sys/class/drm")) -> list[str]:
     names: list[str] = []
     seen: set[str] = set()
     try:
@@ -88,8 +86,7 @@ def _detect_from_sysfs(drm_path: Path = Path("/sys/class/drm")) -> list[str]:
 
 
 def detect_intel_gpus() -> list[GPUInfo]:
-    """Detect Linux Intel iGPUs. Returns empty list on failure."""
-    names = _detect_from_lspci() or _detect_from_sysfs()
+    names = detect_from_lspci() or detect_from_sysfs()
 
     return [
         GPUInfo(

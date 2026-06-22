@@ -1,10 +1,3 @@
-"""Compatibility shim: curated registries now live under ``whichvlm.data``.
-
-This module re-exports the same names so existing imports
-(``from whichvlm.constants import ...``) keep working. New code should import
-from the specific ``whichvlm.data.*`` submodule instead.
-"""
-
 from whichvlm.data.framework import (
     FRAMEWORK_OVERHEAD_BYTES,
     MIN_COMPUTE_CAPABILITY_OLLAMA,

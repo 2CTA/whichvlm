@@ -1,6 +1,3 @@
-"""Quantization tiers: bytes-per-weight, quality penalty, and preference order."""
-
-# Bytes per weight for each quantization type
 QUANT_BYTES_PER_WEIGHT: dict[str, float] = {
     "F32": 4.0,
     "F16": 2.0,
@@ -20,15 +17,11 @@ QUANT_BYTES_PER_WEIGHT: dict[str, float] = {
     "IQ4_XS": 0.5,
     "IQ3_XXS": 0.375,
     "IQ2_XXS": 0.25,
-    # 4-bit microscaling float formats (OCP MXFP4 / NVIDIA NVFP4).
-    # MXFP4: E2M1 element + one E8M0 (8-bit) scale per block of 32 weights
-    #   -> (4*32 + 8) / 32 = 4.25 bits/weight = 0.53125 bytes.
-    # NVFP4: E2M1 element + one E4M3 (8-bit) scale per block of 16 weights
-    #   (plus a negligible per-tensor FP32 scale) -> (4*16 + 8) / 16 = 4.5 bits
-    #   = 0.5625 bytes, the same footprint as Q4_K_M.
+
+
     "MXFP4": 0.53125,
     "NVFP4": 0.5625,
-    # Sub-2-bit / ternary tiers (extremely lossy)
+
     "Q1_0": 0.28,
     "Q2_0": 0.28,
     "TQ1_0": 0.21,
@@ -43,8 +36,7 @@ QUANT_BYTES_PER_WEIGHT: dict[str, float] = {
     "IQ4_NL": 0.5,
 }
 
-# Quality penalty for each quantization type (fraction of quality lost).
-# Sub-2-bit and ternary quants lose 30-60% of model quality.
+
 QUANT_QUALITY_PENALTY: dict[str, float] = {
     "F32": 0.0,
     "F16": 0.0,
@@ -57,10 +49,8 @@ QUANT_QUALITY_PENALTY: dict[str, float] = {
     "Q4_K_M": 0.05,
     "Q4_K_S": 0.055,
     "Q4_0": 0.06,
-    # NVFP4's finer per-16 E4M3 scale recovers more accuracy than MXFP4's
-    # coarser per-32 E8M0 (power-of-two) scale, so NVFP4 sits on par with the
-    # mature 4-bit quantizers (Q4_K_M / AWQ at 0.05) while MXFP4 is slightly
-    # lossier.
+
+
     "NVFP4": 0.05,
     "MXFP4": 0.06,
     "Q3_K_M": 0.08,
@@ -84,9 +74,7 @@ QUANT_QUALITY_PENALTY: dict[str, float] = {
     "TQ1_0": 0.55,
 }
 
-# Preferred quantization types ordered from best to acceptable.
-# Sub-3-bit and 1-bit ternary variants sit at the tail so they are only
-# selected when nothing else is available or when explicitly requested.
+
 QUANT_PREFERENCE_ORDER = [
     "Q4_K_M",
     "Q4_K_S",

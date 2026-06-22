@@ -11,13 +11,15 @@ from whichvlm.hardware.nvidia import detect_nvidia_gpus
 from whichvlm.hardware.types import BackendCapability, HardwareInfo, ensure_backend_capabilities
 from whichvlm.hardware.windows import detect_windows_gpus
 
+# Hardware entry. Merges CPU, RAM, disk, and per-OS GPU probes.
 
 def detect_hardware() -> HardwareInfo:
+    # Main probe. Builds one normalized HardwareInfo for ranking.
     os_name = platform.system().lower()
     if os_name not in ("linux", "darwin", "windows"):
         os_name = "linux"
 
-    # GPU detection
+
     gpus = []
     gpus.extend(detect_nvidia_gpus())
     if os_name == "linux":
@@ -31,12 +33,12 @@ def detect_hardware() -> HardwareInfo:
     for gpu in gpus:
         ensure_backend_capabilities(gpu, os_name)
 
-    # CPU
+
     cpu_name = detect_cpu_name()
     cpu_cores = detect_cpu_cores()
     has_avx2, has_avx512 = detect_avx_support()
 
-    # Memory
+
     ram_bytes = detect_ram_bytes()
     disk_free = detect_disk_free_bytes()
 

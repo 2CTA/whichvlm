@@ -1,5 +1,3 @@
-"""Tests for hardware.memory — estimate_usable_ram bounded-reserve formula."""
-
 import pytest
 
 from whichvlm.hardware.memory import estimate_usable_ram
@@ -7,7 +5,7 @@ from whichvlm.hardware.memory import estimate_usable_ram
 BYTES_PER_GIB = 1024**3
 
 
-def _expected_usable(total: int) -> int:
+def expected_usable(total: int) -> int:
     reserve = int(total * 0.15)
     reserve = max(4 * BYTES_PER_GIB, min(reserve, 32 * BYTES_PER_GIB))
     return total - reserve
@@ -20,7 +18,7 @@ def _expected_usable(total: int) -> int:
 )
 def test_estimate_usable_ram(total_gb):
     total = total_gb * BYTES_PER_GIB
-    assert estimate_usable_ram(total) == _expected_usable(total)
+    assert estimate_usable_ram(total) == expected_usable(total)
 
 
 def test_16gb_hits_min_reserve():

@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class BackendCapability:
-    name: str  # "metal" | "mlx" | "mps" | "cuda" | "rocm" | "vulkan" | "cpu"
+    name: str
     available: bool = True
     version: str | None = None
     details: str | None = None
@@ -14,13 +14,13 @@ class BackendCapability:
 @dataclass
 class GPUInfo:
     name: str
-    vendor: str  # "nvidia" | "amd" | "apple" | "intel"
+    vendor: str
     vram_bytes: int
     usable_vram_bytes: int | None = None
-    compute_capability: tuple[int, int] | None = None  # NVIDIA only
+    compute_capability: tuple[int, int] | None = None
     cuda_version: str | None = None
     rocm_version: str | None = None
-    memory_bandwidth_gbps: float | None = None  # from lookup table
+    memory_bandwidth_gbps: float | None = None
     shared_memory: bool = False
     backend_capabilities: list[BackendCapability] = field(default_factory=list)
     neural_engine_available: bool = False
@@ -36,13 +36,13 @@ class HardwareInfo:
     ram_bytes: int = 0
     ram_budget_bytes: int | None = None
     disk_free_bytes: int = 0
-    os: str = "linux"  # "linux" | "darwin" | "windows"
+    os: str = "linux"
     budget_notes: list[str] = field(default_factory=list)
     backend_capabilities: list[BackendCapability] = field(default_factory=list)
 
 
 def infer_backend_capabilities(gpu: GPUInfo, os_name: str) -> list[BackendCapability]:
-    """Infer backend capabilities from normalized GPU metadata."""
+
     if gpu.vendor == "apple":
         if os_name == "darwin":
             return [

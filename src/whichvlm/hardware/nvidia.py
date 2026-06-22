@@ -1,5 +1,3 @@
-"""NVIDIA GPU detection via NVML with nvidia-smi fallback."""
-
 from __future__ import annotations
 
 import logging
@@ -10,12 +8,13 @@ from whichvlm.constants import NVIDIA_COMPUTE_CAPABILITY, BYTES_PER_GIB
 from whichvlm.hardware.gpu_db import static_bandwidth, resolve_detected_bandwidth
 from whichvlm.hardware.types import GPUInfo
 
+# NVIDIA probe. Prefers NVML and falls back to nvidia-smi parsing.
 logger = logging.getLogger(__name__)
 
-_NVIDIA_UNIFIED_MEMORY_MARKERS = ("GB10", "DGX SPARK")
+NVIDIA_UNIFIED_MEMORY_MARKERS = ("GB10", "DGX SPARK")
 
 
-def _lookup_compute_capability(name: str) -> tuple[int, int] | None:
+def lookup_compute_capability(name: str) -> tuple[int, int] | None:
     name_upper = name.upper()
     for key, cc in NVIDIA_COMPUTE_CAPABILITY.items():
         if key.upper() in name_upper:
@@ -23,18 +22,17 @@ def _lookup_compute_capability(name: str) -> tuple[int, int] | None:
     return None
 
 
-def _lookup_bandwidth(name: str) -> float | None:
-    """Curated GPU_BANDWIDTH lookup. Kept for regression tests; live detection
-    goes through ``resolve_detected_bandwidth``, which also consults dbgpu."""
+def lookup_bandwidth(name: str) -> float | None:
+
     return static_bandwidth(name)
 
 
-def _is_unified_memory_nvidia_gpu(name: str) -> bool:
+def is_unified_memory_nvidia_gpu(name: str) -> bool:
     name_upper = name.upper()
-    return any(marker in name_upper for marker in _NVIDIA_UNIFIED_MEMORY_MARKERS)
+    return any(marker in name_upper for marker in NVIDIA_UNIFIED_MEMORY_MARKERS)
 
 
-def _system_memory_bytes() -> int:
+def system_memory_bytes() -> int:
     from whichvlm.hardware.memory import detect_ram_bytes
 
     ram_bytes = detect_ram_bytes()
@@ -43,15 +41,15 @@ def _system_memory_bytes() -> int:
     return 128 * BYTES_PER_GIB
 
 
-def _make_nvidia_gpu(
+def make_nvidia_gpu(
     name: str,
     vram_bytes: int | None,
     cuda_version: str | None = None,
     mem_clock_mhz: float | None = None,
 ) -> GPUInfo:
-    shared_memory = _is_unified_memory_nvidia_gpu(name)
+    shared_memory = is_unified_memory_nvidia_gpu(name)
     if shared_memory and (vram_bytes is None or vram_bytes <= 0):
-        vram_bytes = _system_memory_bytes()
+        vram_bytes = system_memory_bytes()
     elif vram_bytes is None:
         vram_bytes = 0
 
@@ -59,7 +57,7 @@ def _make_nvidia_gpu(
         name=name,
         vendor="nvidia",
         vram_bytes=vram_bytes,
-        compute_capability=_lookup_compute_capability(name),
+        compute_capability=lookup_compute_capability(name),
         cuda_version=cuda_version,
         memory_bandwidth_gbps=resolve_detected_bandwidth(
             name, vram_bytes, mem_clock_mhz
@@ -68,7 +66,7 @@ def _make_nvidia_gpu(
     )
 
 
-def _run_smi_query(fields: str) -> str:
+def run_smi_query(fields: str) -> str:
     result = subprocess.run(
         ["nvidia-smi", f"--query-gpu={fields}", "--format=csv,noheader,nounits"],
         capture_output=True,
@@ -79,20 +77,14 @@ def _run_smi_query(fields: str) -> str:
     return result.stdout
 
 
-def _detect_nvidia_gpus_via_smi() -> list[GPUInfo]:
-    """Detect NVIDIA GPUs using nvidia-smi when Python NVML cannot load.
-
-    The max memory clock (used to disambiguate same-name memory variants such as
-    GTX 1650 GDDR5/GDDR6) is queried opportunistically. If the 3-field query
-    fails on a driver/card that rejects ``clocks.max.memory``, we retry the
-    original 2-field query so a missing optional field never wipes out detection.
-    """
+def detect_nvidia_gpus_via_smi() -> list[GPUInfo]:
+    # CLI fallback. Parses names, VRAM, and optional memory clocks.
     try:
-        stdout = _run_smi_query("name,memory.total,clocks.max.memory")
+        stdout = run_smi_query("name,memory.total,clocks.max.memory")
     except (subprocess.SubprocessError, OSError) as e:
         logger.debug(f"nvidia-smi 3-field query failed ({e}); retrying without clock")
         try:
-            stdout = _run_smi_query("name,memory.total")
+            stdout = run_smi_query("name,memory.total")
         except (subprocess.SubprocessError, OSError) as e2:
             logger.debug(f"nvidia-smi fallback failed: {e2}")
             return []
@@ -104,7 +96,7 @@ def _detect_nvidia_gpus_via_smi() -> list[GPUInfo]:
             continue
 
         name, memory_mib_text = parts[0], parts[1]
-        # clocks.max.memory is MHz (or "[N/A]" on some cards/drivers).
+
         mem_clock_mhz: float | None = None
         if len(parts) == 3:
             clock_match = re.search(r"\d+", parts[2])
@@ -113,40 +105,39 @@ def _detect_nvidia_gpus_via_smi() -> list[GPUInfo]:
 
         match = re.search(r"\d+", memory_mib_text)
         if not match:
-            if not _is_unified_memory_nvidia_gpu(name):
+            if not is_unified_memory_nvidia_gpu(name):
                 logger.debug(f"Could not parse nvidia-smi memory value: {line!r}")
                 continue
-            gpus.append(_make_nvidia_gpu(name, None, mem_clock_mhz=mem_clock_mhz))
+            gpus.append(make_nvidia_gpu(name, None, mem_clock_mhz=mem_clock_mhz))
             continue
 
         memory_mib = int(match.group(0))
         gpus.append(
-            _make_nvidia_gpu(name, memory_mib * 1024**2, mem_clock_mhz=mem_clock_mhz)
+            make_nvidia_gpu(name, memory_mib * 1024**2, mem_clock_mhz=mem_clock_mhz)
         )
 
     return gpus
 
 
 def detect_nvidia_gpus() -> list[GPUInfo]:
-    """Detect NVIDIA GPUs. Returns empty list on failure."""
+    # Main NVIDIA probe. Uses NVML when present, then falls back to smi.
     try:
         import pynvml
     except ImportError:
         logger.debug("pynvml not installed, trying nvidia-smi fallback")
-        return _detect_nvidia_gpus_via_smi()
+        return detect_nvidia_gpus_via_smi()
 
     try:
         pynvml.nvmlInit()
     except pynvml.NVMLError:
         logger.debug("NVML init failed, trying nvidia-smi fallback")
-        return _detect_nvidia_gpus_via_smi()
+        return detect_nvidia_gpus_via_smi()
 
     gpus: list[GPUInfo] = []
     try:
         count = pynvml.nvmlDeviceGetCount()
-        # Get CUDA driver version
         try:
-            pynvml.nvmlSystemGetDriverVersion()  # ensure driver is accessible
+            pynvml.nvmlSystemGetDriverVersion()
             cuda_version = pynvml.nvmlSystemGetCudaDriverVersion_v2()
             cuda_str = f"{cuda_version // 1000}.{(cuda_version % 1000) // 10}"
         except pynvml.NVMLError:
@@ -162,27 +153,26 @@ def detect_nvidia_gpus() -> list[GPUInfo]:
                 mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
                 vram_bytes = mem_info.total
             except pynvml.NVMLError:
-                if not _is_unified_memory_nvidia_gpu(name):
+                if not is_unified_memory_nvidia_gpu(name):
                     raise
                 logger.debug(f"NVML did not report dedicated memory for {name}")
                 vram_bytes = None
 
-            # Max memory clock (MHz) disambiguates same-name memory variants
-            # (e.g. GTX 1650 GDDR5 vs GDDR6). Optional: not all drivers expose it.
+
             try:
                 mem_clock_mhz: float | None = float(
                     pynvml.nvmlDeviceGetMaxClockInfo(handle, pynvml.NVML_CLOCK_MEM)
                 )
             except (pynvml.NVMLError, AttributeError) as clock_err:
-                # Optional: without it, same-name memory variants fall back to the
-                # curated default. Log so an unexpected under-serve is diagnosable.
+
+
                 logger.debug(
                     f"max mem clock unavailable for {name} "
                     f"({clock_err}); bandwidth from name only"
                 )
                 mem_clock_mhz = None
 
-            gpus.append(_make_nvidia_gpu(name, vram_bytes, cuda_str, mem_clock_mhz))
+            gpus.append(make_nvidia_gpu(name, vram_bytes, cuda_str, mem_clock_mhz))
     except pynvml.NVMLError as e:
         logger.debug(f"Error enumerating NVIDIA GPUs: {e}")
     finally:
@@ -195,4 +185,4 @@ def detect_nvidia_gpus() -> list[GPUInfo]:
         return gpus
 
     logger.debug("NVML returned no NVIDIA GPUs, trying nvidia-smi fallback")
-    return _detect_nvidia_gpus_via_smi()
+    return detect_nvidia_gpus_via_smi()
