@@ -1,9 +1,15 @@
+import json
+from io import StringIO
+
 import httpx
 import pytest
+from rich.console import Console
 from typer import Exit
+from typer.testing import CliRunner
 
 import whichvlm.cli as cli_mod
 import whichvlm.__main__ as main_mod
+import whichvlm.output.console as console_mod
 from whichvlm.cli import (
     apply_memory_budgets,
     apply_gpu_overrides,
@@ -28,7 +34,7 @@ from whichvlm.utils import current_version
 from whichvlm.engine.types import CompatibilityResult
 from whichvlm.hardware.types import GPUInfo, HardwareInfo, has_backend
 from whichvlm.models.types import GGUFVariant, ModelArtifact, ModelInfo
-from typer.testing import CliRunner
+from whichvlm.output.display import display_json
 
 
 def hw_with_gpu(vram_gb: int) -> HardwareInfo:
@@ -50,8 +56,6 @@ def hw_with_gpu(vram_gb: int) -> HardwareInfo:
 
 
 def test_auto_min_params_general_by_vram():
-
-
     assert auto_min_params_for_profile(hw_with_gpu(4), "general") == 2.0
     assert auto_min_params_for_profile(hw_with_gpu(6), "general") == 3.0
     assert auto_min_params_for_profile(hw_with_gpu(8), "general") == 5.0
@@ -528,9 +532,10 @@ def test_main_json_smoke_profile_vision(monkeypatch):
             )
         ]
 
-    def fake_display_json(results, hardware):
+    def fake_display_json(results, hardware, details=False):
         captured["json_called"] = True
         captured["json_results"] = results
+        captured["json_details"] = details
 
     monkeypatch.setattr(
         "whichvlm.hardware.detector.detect_hardware", lambda: hw_with_gpu(8)
@@ -547,9 +552,15 @@ def test_main_json_smoke_profile_vision(monkeypatch):
 
     assert result.exit_code == 0
     assert captured["json_called"] is True
+    assert captured["json_details"] is False
     assert captured["task_profile"] == "vision"
     assert captured["vision_workload"].image_count == 2
     assert captured["vision_workload"].image_size == 896
+
+    captured.clear()
+    result = CliRunner().invoke(app, ["--json", "--details"])
+    assert result.exit_code == 0
+    assert captured["json_details"] is True
 
 
 def test_hardware_command_smoke(monkeypatch):
@@ -1056,15 +1067,22 @@ def test_snippet_no_model_found(monkeypatch):
     assert "No model found" in result.stdout
 
 
-def test_json_output_includes_benchmark_source_and_confidence():
+def render_json_output(
+    result: CompatibilityResult,
+    hardware: HardwareInfo,
+    details: bool = False,
+) -> dict:
+    buffer = StringIO()
+    original_console = console_mod.console
+    console_mod.console = Console(file=buffer, force_terminal=False)
+    try:
+        display_json([result], hardware, details=details)
+    finally:
+        console_mod.console = original_console
+    return json.loads(buffer.getvalue().strip())
 
-    import json as json_mod
-    from io import StringIO
 
-    from rich.console import Console
-
-    from whichvlm.output.display import display_json
-
+def json_output_case() -> tuple[CompatibilityResult, HardwareInfo]:
     model = ModelInfo(
         id="test-org/Test-7B",
         family_id="test-7b",
@@ -1105,26 +1123,34 @@ def test_json_output_includes_benchmark_source_and_confidence():
         os="linux",
         budget_notes=["RAM budget: 32.0 GB"],
     )
+    return result, hw
 
-    buf = StringIO()
-    import whichvlm.output.console as console_mod
 
-    orig_console = console_mod.console
-    console_mod.console = Console(file=buf, force_terminal=False)
-    try:
-        display_json([result], hw)
-    finally:
-        console_mod.console = orig_console
+def test_json_output_defaults_to_compact():
+    result, hardware = json_output_case()
+    compact = render_json_output(result, hardware)
+    compact_entry = compact["models"][0]
 
-    data = json_mod.loads(buf.getvalue().strip())
+    assert compact_entry["model_id"] == "test-org/Test-7B"
+    assert compact_entry["benchmark_source"] == "line_interp"
+    assert "artifacts" not in compact_entry
+    assert "lineage" not in compact_entry
+    assert "budget_notes" not in compact["hardware"]
+
+
+def test_json_output_includes_diagnostics_when_requested():
+    result, hardware = json_output_case()
+    data = render_json_output(result, hardware, details=True)
     entry = data["models"][0]
+    artifact = entry["artifacts"][0]
+
     assert data["hardware"]["ram_budget_bytes"] == 32 * 1024**3
     assert data["hardware"]["budget_notes"] == ["RAM budget: 32.0 GB"]
     assert entry["benchmark_status"] == "estimated"
     assert entry["benchmark_source"] == "line_interp"
     assert entry["benchmark_confidence"] == 0.34
     assert entry["base_models"] == ["base/Test-7B"]
-    assert entry["artifacts"][0]["format"] == "mlx"
-    assert entry["artifacts"][0]["access"] == "gated"
-    assert entry["artifacts"][0]["backend_support"] == ["mlx", "metal"]
+    assert artifact["format"] == "mlx"
+    assert artifact["access"] == "gated"
+    assert artifact["backend_support"] == ["mlx", "metal"]
     assert entry["lineage"]["base_model_ids"] == ["base/Test-7B"]

@@ -435,7 +435,7 @@ def main(
     details: bool = typer.Option(
         False,
         "--details",
-        help="Show Downloads metadata instead of runtime columns",
+        help="Show metadata columns; with --json, emit full diagnostic JSON",
     ),
     min_params: Optional[float] = typer.Option(
         None,
@@ -608,7 +608,7 @@ def main(
             "and CPU-only candidates."
         )
     if json_output:
-        display_json(results, hardware)
+        display_json(results, hardware, details=details)
     elif markdown_output:
         display_markdown(
             results,
