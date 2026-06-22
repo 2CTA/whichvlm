@@ -101,6 +101,29 @@ def test_apply_gpu_overrides_accepts_multiple_simulated_gpus():
     assert len(hw.gpus) == 2
     assert all(gpu.vendor == "nvidia" for gpu in hw.gpus)
     assert all(gpu.vram_bytes == 24 * 1024**3 for gpu in hw.gpus)
+    assert all(has_backend(gpu, "cuda") for gpu in hw.gpus)
+    assert all(has_backend(gpu, "vulkan") for gpu in hw.gpus)
+
+
+def test_json_simulated_nvidia_gpu_includes_backend_capabilities():
+    hardware = HardwareInfo(gpus=[], ram_bytes=64 * 1024**3, os="linux")
+    apply_gpu_overrides(hardware, cpu_only=False, gpu=["RTX 4090"], vram=None)
+
+    buffer = StringIO()
+    original_console = console_mod.console
+    console_mod.console = Console(file=buffer, force_terminal=False)
+    try:
+        display_json([], hardware, details=True)
+    finally:
+        console_mod.console = original_console
+
+    data = json.loads(buffer.getvalue())
+    gpu = data["hardware"]["gpus"][0]
+    assert gpu["vendor"] == "nvidia"
+    assert {c["name"] for c in gpu["backend_capabilities"] if c["available"]} == {
+        "cuda",
+        "vulkan",
+    }
 
 
 def test_include_vision_candidates_by_profile():

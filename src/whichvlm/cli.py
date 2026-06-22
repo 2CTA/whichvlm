@@ -10,7 +10,7 @@ from rich.console import Console
 
 from whichvlm.constants import BYTES_PER_GIB
 from whichvlm.engine.workload import VisionWorkload
-from whichvlm.hardware.types import HardwareInfo
+from whichvlm.hardware.types import HardwareInfo, ensure_backend_capabilities
 from whichvlm.models.types import GGUFVariant, ModelInfo
 from whichvlm.runtime import (
     RuntimeUnsupportedError,
@@ -277,6 +277,8 @@ def apply_gpu_overrides(
 
         try:
             hardware.gpus = create_synthetic_gpus(gpu, vram)
+            for gpu_info in hardware.gpus:
+                ensure_backend_capabilities(gpu_info, hardware.os)
         except ValueError as e:
             console.print(f"[red]Error:[/] {e}")
             raise typer.Exit(code=1)
