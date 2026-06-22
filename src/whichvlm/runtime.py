@@ -39,7 +39,7 @@ def resolve_model_deps(
     if vlm_model:
         if is_mlx_model(model):
             return ["mlx-vlm", "pillow"], "mlx_vlm"
-        return ["transformers", "torch", "accelerate", "pillow"], "transformers_vlm"
+        return ["transformers", "torch", "torchvision", "accelerate", "pillow"], "transformers_vlm"
 
     qt = infer_non_gguf_quant_type(model.id)
     base = ["transformers", "torch", "accelerate"]
