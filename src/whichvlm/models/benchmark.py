@@ -11,6 +11,11 @@ from dataclasses import dataclass
 
 import httpx
 
+from whichvlm.models.cache_format import (
+    cache_expired,
+    cache_snapshot_metadata,
+    read_cache_payload,
+)
 from whichvlm.utils import cache_dir, current_version
 
 # Benchmark merge layer. Blends current and fallback score sources.
@@ -19,6 +24,18 @@ logger = logging.getLogger(__name__)
 CACHE_DIR = cache_dir()
 BENCHMARK_CACHE = CACHE_DIR / "benchmark.json"
 DEFAULT_TTL_SECONDS = 24 * 3600
+BENCHMARK_CACHE_SCHEMA_VERSION = 2
+BENCHMARK_SOURCE_PROVENANCE = {
+    "name": "benchmark_index",
+    "sources": [
+        "aa_index",
+        "livebench",
+        "vision",
+        "chatbot_arena",
+        "aider_polyglot",
+        "open_llm_leaderboard",
+    ],
+}
 
 VLM_BENCHMARK_ID_RE = re.compile(
     r"(?:^|[-_/])(vl|vision|multimodal|llava|pixtral|image)(?:[-_/]|$)|"
@@ -53,31 +70,51 @@ def benchmark_confidence(model_id: str, source: str, default: float) -> float:
     return vlm_confidence.get(source, default)
 
 
-def load_benchmark_cache() -> dict[str, float] | None:
+def load_benchmark_cache(*, allow_stale: bool = False) -> dict[str, float] | None:
     # Cache read. Reuses merged benchmark scores until ttl expires.
-    if not BENCHMARK_CACHE.exists():
+    payload = read_cache_payload(BENCHMARK_CACHE)
+    if payload is None:
         return None
     try:
-        data = json.loads(BENCHMARK_CACHE.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            return None
-        cached_at = data["cached_at"]
-        if time.time() - cached_at > DEFAULT_TTL_SECONDS:
+        if cache_expired(
+            payload["cached_at"], DEFAULT_TTL_SECONDS, allow_stale=allow_stale
+        ):
             logger.debug("Benchmark cache expired")
             return None
-        scores = data["scores"]
+        scores = payload["scores"]
         if not isinstance(scores, dict):
             return None
         return scores
-    except (json.JSONDecodeError, KeyError, TypeError) as e:
+    except (KeyError, TypeError) as e:
         logger.debug(f"Benchmark cache corrupted: {e}")
         return None
 
 
+def benchmark_cache_snapshot() -> dict | None:
+    payload = read_cache_payload(BENCHMARK_CACHE)
+    if payload is None:
+        return None
+    return cache_snapshot_metadata(
+        payload,
+        default_ttl_seconds=DEFAULT_TTL_SECONDS,
+        item_key="scores",
+        item_count_key="score_count",
+        default_source=BENCHMARK_SOURCE_PROVENANCE,
+    )
+
+
 def save_benchmark_cache(scores: dict[str, float]) -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    data = {"cached_at": time.time(), "scores": scores}
-    BENCHMARK_CACHE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    payload = {
+        "schema_version": BENCHMARK_CACHE_SCHEMA_VERSION,
+        "cached_at": time.time(),
+        "ttl_seconds": DEFAULT_TTL_SECONDS,
+        "source": BENCHMARK_SOURCE_PROVENANCE,
+        "scores": scores,
+    }
+    BENCHMARK_CACHE.write_text(
+        json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+    )
     logger.debug(f"Saved {len(scores)} benchmark scores to cache")
 
 
