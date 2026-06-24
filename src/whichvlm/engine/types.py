@@ -36,6 +36,7 @@ class CompatibilityResult:
     benchmark_status: BenchmarkStatus = "none"
     benchmark_source: BenchmarkSource = "none"
     benchmark_confidence: float = 0.0
+    ranking_freshness_weight: float = 1.0
     context_fits: bool = True
     uses_multi_gpu: bool = False
     multi_gpu_effective_vram_bytes: int | None = None

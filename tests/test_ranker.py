@@ -306,6 +306,59 @@ def test_popularity_has_no_effect_with_direct_benchmark():
     assert abs(results[0].quality_score - results[1].quality_score) < 1e-9
 
 
+def test_freshness_weight_can_disable_generation_score_delta():
+    newer = ModelInfo(
+        id="Qwen/Qwen3.6-8B",
+        family_id="qwen36-8b",
+        name="Qwen3.6-8B",
+        parameter_count=8_000_000_000,
+        downloads=1000,
+        likes=100,
+        gguf_variants=[
+            GGUFVariant(
+                filename="new-Q4_K_M.gguf",
+                quant_type="Q4_K_M",
+                file_size_bytes=4_500_000_000,
+            ),
+        ],
+    )
+    older = ModelInfo(
+        id="Qwen/Qwen2.5-8B",
+        family_id="qwen25-8b",
+        name="Qwen2.5-8B",
+        parameter_count=8_000_000_000,
+        downloads=1000,
+        likes=100,
+        gguf_variants=[
+            GGUFVariant(
+                filename="old-Q4_K_M.gguf",
+                quant_type="Q4_K_M",
+                file_size_bytes=4_500_000_000,
+            ),
+        ],
+    )
+    scores = {"Qwen/Qwen3.6-8B": 70.0, "Qwen/Qwen2.5-8B": 70.0}
+
+    full_weight = rank_models(
+        [newer, older],
+        make_hardware(),
+        top_n=2,
+        benchmark_scores=scores,
+        freshness_weight=1.0,
+    )
+    zero_weight = rank_models(
+        [newer, older],
+        make_hardware(),
+        top_n=2,
+        benchmark_scores=scores,
+        freshness_weight=0.0,
+    )
+
+    assert full_weight[0].model.id == "Qwen/Qwen3.6-8B"
+    assert zero_weight[0].quality_score == zero_weight[1].quality_score
+    assert zero_weight[0].ranking_freshness_weight == 0.0
+
+
 def test_general_profile_excludes_specialized_models():
     general_model = ModelInfo(
         id="Qwen/Qwen2.5-7B-Instruct",

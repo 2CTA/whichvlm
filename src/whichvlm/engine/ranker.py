@@ -29,6 +29,7 @@ from whichvlm.models.benchmark import (
 from whichvlm.models.types import GGUFVariant, ModelInfo
 
 # Ranking core. Expands variants, scores fit, and orders final picks.
+RANKING_ALGORITHM_VERSION = "2026.06.22.1"
 
 LINEAGE_REGEX: dict[str, list[tuple[re.Pattern[str], int]]] = {
     family: [(re.compile(pat), idx) for pat, idx in entries]
@@ -505,6 +506,7 @@ def compute_quality_score(
     family_likes: int = 0,
     benchmark_avg: float | None = None,
     benchmark_source: str = "none",
+    freshness_weight: float = 1.0,
 ) -> float:
 
     params_b = model.parameter_count / 1e9
@@ -614,7 +616,7 @@ def compute_quality_score(
     source_bonus = source_bonus_raw * source_weight
 
 
-    gen_bonus = generation_bonus(model.id)
+    gen_bonus = generation_bonus(model.id) * freshness_weight
 
 
     if not has_benchmark or is_self_reported:
@@ -653,11 +655,13 @@ def rank_models(
     evidence_filter: str = "any",
     fit_filter: str = "any",
     vision_workload: VisionWorkload | None = None,
+    freshness_weight: float = 1.0,
 ) -> list[CompatibilityResult]:
     # Main rank pass. Scores every candidate against hardware and evidence.
 
     results: list[CompatibilityResult] = []
     gguf_only_backend = is_gguf_only_backend(hardware)
+    applied_freshness_weight = max(0.0, min(1.0, freshness_weight))
     if vision_workload is None and task_profile.lower() == "vision":
         vision_workload = VisionWorkload(context_length=context_length)
 
@@ -819,7 +823,9 @@ def rank_models(
                 family_likes=family_max_likes.get(fid, 0),
                 benchmark_avg=bench_avg,
                 benchmark_source=bench_evidence.source,
+                freshness_weight=applied_freshness_weight,
             )
+            compat.ranking_freshness_weight = applied_freshness_weight
             compat.quality_score = min(
                 100.0,
                 compat.quality_score

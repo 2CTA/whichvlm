@@ -17,6 +17,7 @@ from whichvlm.cli import (
     fill_missing_published_at,
     format_fetch_error,
     include_vision_candidates,
+    load_benchmark_index,
     merge_model_eval_benchmarks,
     parse_memory_amount,
     resolve_model_match,
@@ -26,6 +27,7 @@ from whichvlm.cli import (
     resolve_speed_filter,
     select_gguf_variant,
     validate_evidence,
+    validate_freshness_weight,
     vision_workload_for_profile,
     app,
 )
@@ -124,6 +126,8 @@ def test_json_simulated_nvidia_gpu_includes_backend_capabilities():
         "cuda",
         "vulkan",
     }
+    assert "ranking" in data
+    assert "cache_snapshots" in data
 
 
 def test_include_vision_candidates_by_profile():
@@ -207,6 +211,31 @@ def test_format_fetch_error_includes_status_and_url_for_empty_http_error():
     )
 
 
+def test_load_benchmark_index_uses_stale_cache_after_fetch_failure(monkeypatch):
+    cache_calls = []
+
+    def fake_load_cache(*, allow_stale: bool = False):
+        cache_calls.append(allow_stale)
+        if allow_stale:
+            return {"test/stale": 1.0}
+        return None
+
+    async def fail_fetch():
+        raise httpx.ConnectError("offline")
+
+    def fail_save(scores):
+        raise AssertionError("failed benchmark fetch should not save cache")
+
+    monkeypatch.setattr(
+        "whichvlm.models.benchmark.load_benchmark_cache", fake_load_cache
+    )
+    monkeypatch.setattr("whichvlm.models.benchmark.fetch_benchmark_scores", fail_fetch)
+    monkeypatch.setattr("whichvlm.models.benchmark.save_benchmark_cache", fail_save)
+
+    assert load_benchmark_index(refresh=False) == {"test/stale": 1.0}
+    assert cache_calls == [False, True]
+
+
 def test_merge_model_eval_benchmarks_is_now_a_noop():
 
     model_direct_missing = ModelInfo(
@@ -249,6 +278,15 @@ def test_validate_evidence_accepts_all_modes():
 def test_validate_evidence_rejects_unknown_mode():
     with pytest.raises(Exit):
         validate_evidence("foo")
+
+
+def test_validate_freshness_weight_bounds():
+    assert validate_freshness_weight(0.0) == 0.0
+    assert validate_freshness_weight(1.0) == 1.0
+    with pytest.raises(Exit):
+        validate_freshness_weight(-0.1)
+    with pytest.raises(Exit):
+        validate_freshness_weight(1.1)
 
 
 def test_resolve_evidence_mode_direct_alias_wins():

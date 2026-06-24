@@ -149,6 +149,7 @@ def model_dict(rank: int, result: CompatibilityResult, details: bool = False) ->
                     else None
                 ),
                 "speed_notes": result.speed_notes,
+                "ranking_freshness_weight": result.ranking_freshness_weight,
             }
         )
     return data
@@ -166,6 +167,21 @@ def display_json(
             for i, result in enumerate(results, 1)
         ],
     }
+    if details:
+        from whichvlm.engine.ranker import RANKING_ALGORITHM_VERSION
+        from whichvlm.models.benchmark import benchmark_cache_snapshot
+        from whichvlm.models.cache import cache_snapshot
+
+        output["ranking"] = {
+            "algorithm_version": RANKING_ALGORITHM_VERSION,
+            "freshness_weight": (
+                results[0].ranking_freshness_weight if results else None
+            ),
+        }
+        output["cache_snapshots"] = {
+            "model_metadata": cache_snapshot(),
+            "benchmarks": benchmark_cache_snapshot(),
+        }
     console.console.print_json(json.dumps(output, ensure_ascii=False))
 
 

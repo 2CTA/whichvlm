@@ -45,6 +45,26 @@ def test_model_cache_reads_and_writes_utf8(monkeypatch, tmp_path):
     cache_mod.save_cache([{"id": "test/Omega-Ω"}])
     assert writer.encoding == "utf-8"
     assert "Ω" in writer.text
+    saved = json.loads(writer.text)
+    assert saved["schema_version"] == cache_mod.CACHE_SCHEMA_VERSION
+    assert saved["source"]["name"] == "huggingface"
+
+
+def test_model_cache_can_read_stale_snapshot(monkeypatch):
+    payload = {
+        "cached_at": time.time() - cache_mod.DEFAULT_TTL_SECONDS - 1,
+        "ttl_seconds": cache_mod.DEFAULT_TTL_SECONDS,
+        "source": {"name": "huggingface", "queries": []},
+        "models": [{"id": "test/stale"}],
+    }
+    monkeypatch.setattr(cache_mod, "CACHE_FILE", ReadableCacheFile(payload))
+
+    assert cache_mod.load_cache() is None
+    assert cache_mod.load_cache(allow_stale=True) == [{"id": "test/stale"}]
+    snapshot = cache_mod.cache_snapshot()
+    assert snapshot is not None
+    assert snapshot["stale"] is True
+    assert snapshot["source"]["name"] == "huggingface"
 
 
 def test_benchmark_cache_reads_and_writes_utf8(monkeypatch, tmp_path):
@@ -61,3 +81,23 @@ def test_benchmark_cache_reads_and_writes_utf8(monkeypatch, tmp_path):
     benchmark_mod.save_benchmark_cache({"test/Omega-Ω": 1.0})
     assert writer.encoding == "utf-8"
     assert "Ω" in writer.text
+    saved = json.loads(writer.text)
+    assert saved["schema_version"] == benchmark_mod.BENCHMARK_CACHE_SCHEMA_VERSION
+    assert saved["source"]["name"] == "benchmark_index"
+
+
+def test_benchmark_cache_can_read_stale_snapshot(monkeypatch):
+    payload = {
+        "cached_at": time.time() - benchmark_mod.DEFAULT_TTL_SECONDS - 1,
+        "ttl_seconds": benchmark_mod.DEFAULT_TTL_SECONDS,
+        "source": benchmark_mod.BENCHMARK_SOURCE_PROVENANCE,
+        "scores": {"test/stale": 1.0},
+    }
+    monkeypatch.setattr(benchmark_mod, "BENCHMARK_CACHE", ReadableCacheFile(payload))
+
+    assert benchmark_mod.load_benchmark_cache() is None
+    assert benchmark_mod.load_benchmark_cache(allow_stale=True) == {"test/stale": 1.0}
+    snapshot = benchmark_mod.benchmark_cache_snapshot()
+    assert snapshot is not None
+    assert snapshot["stale"] is True
+    assert snapshot["source"]["name"] == "benchmark_index"

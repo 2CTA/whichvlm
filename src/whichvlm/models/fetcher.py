@@ -730,6 +730,26 @@ def model_list_params(
     return params
 
 
+def inventory_source_provenance(
+    *,
+    limit: int = 300,
+    include_vision: bool = True,
+) -> dict:
+    return {
+        "name": "huggingface",
+        "api_base": HF_API_BASE,
+        "limit": limit,
+        "pipeline_tags": (
+            [*VLM_PIPELINE_TAGS, "text-generation"]
+            if include_vision
+            else ["text-generation"]
+        ),
+        "sorts": ["downloads", "lastModified", "trending"],
+        "filters": [v for v in VLM_VARIANT_FILTERS if v],
+        "seed_inventory": "whichvlm.data.vlm_inventory" if include_vision else None,
+    }
+
+
 async def fetch_model_list(
     client: httpx.AsyncClient,
     params: dict,
