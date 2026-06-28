@@ -676,6 +676,36 @@ def plan(
     quant: Optional[str] = typer.Option(
         None, "--quant", "-q", help="Target quantization (default: Q4_K_M)"
     ),
+    image_count: int = typer.Option(
+        1,
+        "--image-count",
+        help="Images per request for VLM memory estimation",
+    ),
+    image_size: int = typer.Option(
+        448,
+        "--image-size",
+        help="Input image edge size for VLM memory estimation",
+    ),
+    video_frames: int = typer.Option(
+        0,
+        "--video-frames",
+        help="Video frames to budget as visual inputs",
+    ),
+    ram: Optional[str] = typer.Option(
+        None,
+        "--ram",
+        help="System RAM budget for partial offload, e.g. 64GB",
+    ),
+    min_speed: Optional[float] = typer.Option(
+        None,
+        "--min-speed",
+        help="Minimum estimated generation speed in tok/s",
+    ),
+    os_name: str = typer.Option(
+        "linux",
+        "--os",
+        help="Target OS for backend compatibility",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
     refresh: bool = typer.Option(
         False, "--refresh", help="Ignore cache and re-fetch models"
@@ -691,12 +721,169 @@ def plan(
     model = resolve_model_match(models, model_name)
 
     target_quant = quant.upper() if quant else "Q4_K_M"
+    from whichvlm.hardware.catalog import PLAN_SYSTEM_RAM_BYTES
+
+    system_ram_bytes = (
+        parse_memory_amount(ram, option_name="--ram") if ram else PLAN_SYSTEM_RAM_BYTES
+    )
 
     if json_output:
-        display_plan_json(model, context_length, target_quant)
+        display_plan_json(
+            model,
+            context_length,
+            target_quant,
+            image_count,
+            image_size,
+            video_frames,
+            system_ram_bytes,
+            min_speed,
+            os_name,
+        )
     else:
         console.print()
-        display_plan(model, context_length, target_quant)
+        display_plan(
+            model,
+            context_length,
+            target_quant,
+            image_count,
+            image_size,
+            video_frames,
+            system_ram_bytes,
+            min_speed,
+            os_name,
+        )
+        console.print()
+
+
+@app.command("hardware-plan")
+def hardware_plan(
+    gpu_name: str = typer.Argument(..., help="Target GPU, e.g. 'RTX 4070'"),
+    context_length: int = typer.Option(
+        4096,
+        "--context-length",
+        "-c",
+        click_type=CONTEXT_LENGTH,
+        help="Context length for KV cache estimation (e.g. 4096, 64k, 128k)",
+    ),
+    quant: Optional[str] = typer.Option(
+        None, "--quant", "-q", help="Target quantization"
+    ),
+    top: int = typer.Option(10, "--top", "-n", help="Number of models to show"),
+    profile: str = typer.Option(
+        "vision", "--profile", help="Ranking profile: general | coding | vision | math | any"
+    ),
+    image_count: int = typer.Option(
+        1,
+        "--image-count",
+        help="Images per request for VLM memory estimation",
+    ),
+    image_size: int = typer.Option(
+        448,
+        "--image-size",
+        help="Input image edge size for VLM memory estimation",
+    ),
+    video_frames: int = typer.Option(
+        0,
+        "--video-frames",
+        help="Video frames to budget as visual inputs",
+    ),
+    ram: Optional[str] = typer.Option(
+        None,
+        "--ram",
+        help="System RAM budget for partial offload, e.g. 64GB",
+    ),
+    vram: Optional[float] = typer.Option(
+        None,
+        "--vram",
+        help="Override target GPU VRAM in GB",
+    ),
+    min_speed: Optional[float] = typer.Option(
+        None,
+        "--min-speed",
+        help="Minimum estimated generation speed in tok/s",
+    ),
+    os_name: str = typer.Option(
+        "linux",
+        "--os",
+        help="Target OS for backend compatibility",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+    refresh: bool = typer.Option(
+        False, "--refresh", help="Ignore cache and re-fetch models"
+    ),
+):
+
+    from whichvlm.engine.ranker import rank_models
+    from whichvlm.hardware.catalog import (
+        PLAN_SYSTEM_RAM_BYTES,
+        PLAN_VRAM_HEADROOM_RATIO,
+        lookup_catalog_entry,
+    )
+    from whichvlm.hardware.gpu_simulator import create_synthetic_gpu
+    from whichvlm.hardware.types import HardwareInfo
+    from whichvlm.models.grouper import group_models
+    from whichvlm.output.display import display_hardware, display_json, display_ranking
+    from whichvlm.output.plan import plan_vision_workload
+
+    profile = validate_profile(profile)
+    system_ram_bytes = (
+        parse_memory_amount(ram, option_name="--ram") if ram else PLAN_SYSTEM_RAM_BYTES
+    )
+
+    catalog_entry = lookup_catalog_entry(gpu_name)
+    if catalog_entry is not None and vram is None:
+        hardware = catalog_entry.to_hardware(system_ram_bytes, os_name)
+    else:
+        try:
+            gpu = create_synthetic_gpu(gpu_name, vram)
+        except ValueError as e:
+            console.print(f"[red]Error:[/] {e}")
+            raise typer.Exit(code=1)
+        gpu.usable_vram_bytes = int(gpu.vram_bytes * (1.0 - PLAN_VRAM_HEADROOM_RATIO))
+        ensure_backend_capabilities(gpu, os_name)
+        hardware = HardwareInfo(
+            gpus=[gpu],
+            ram_bytes=system_ram_bytes,
+            disk_free_bytes=1_000 * BYTES_PER_GIB,
+            os=os_name,
+        )
+
+    with vlm_progress() as progress:
+        task = progress.add_task("loading VLM packages...", total=None)
+        models = load_model_catalog(
+            refresh, include_vision=include_vision_candidates(profile)
+        )
+        progress.update(task, description="loading benchmark index...")
+        bench_scores = load_benchmark_index(refresh)
+        progress.update(task, description=f"scoring {gpu_name}...")
+
+        all_models = []
+        for family in group_models(models):
+            all_models.append(family.base_model)
+            all_models.extend(family.variants)
+
+        results = rank_models(
+            all_models,
+            hardware,
+            context_length=context_length,
+            top_n=top,
+            quant_filter=quant,
+            min_speed=min_speed,
+            benchmark_scores=bench_scores,
+            task_profile=profile,
+            require_direct_top=True,
+            vision_workload=plan_vision_workload(
+                context_length, image_count, image_size, video_frames
+            ),
+        )
+
+    if json_output:
+        display_json(results, hardware, details=True)
+    else:
+        console.print()
+        display_hardware(hardware)
+        console.print()
+        display_ranking(results, has_gpu=True, show_status=True)
         console.print()
 
 

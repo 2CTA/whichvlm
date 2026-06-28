@@ -94,6 +94,20 @@ def hardware_dict(hardware: HardwareInfo, details: bool = False) -> dict:
     return data
 
 
+def result_binding_constraint(result: CompatibilityResult) -> str:
+    if not result.context_fits:
+        return "context length"
+    if not result.can_run:
+        return "memory"
+    if result.estimated_tok_per_sec is None:
+        return "bandwidth"
+    if result.fit_type == "partial_offload":
+        return "VRAM"
+    if result.uses_multi_gpu:
+        return "multi-GPU split"
+    return "none"
+
+
 def model_dict(rank: int, result: CompatibilityResult, details: bool = False) -> dict:
     model = result.model
     data = {
@@ -114,6 +128,9 @@ def model_dict(rank: int, result: CompatibilityResult, details: bool = False) ->
         "benchmark_source": result.benchmark_source,
         "fit_type": result.fit_type,
         "can_run": result.can_run,
+        "context_fits": result.context_fits,
+        "offload_ratio": result.offload_ratio,
+        "binding_constraint": result_binding_constraint(result),
         "warnings": result.warnings,
         "quality_score": round(result.quality_score, 2),
         "benchmark_confidence": round(result.benchmark_confidence, 2),
@@ -189,16 +206,46 @@ def display_plan_json(
     model: ModelInfo,
     context_length: int,
     target_quant: str,
+    image_count: int = 1,
+    image_size: int = 448,
+    video_frames: int = 0,
+    system_ram_bytes: int | None = None,
+    min_speed: float | None = None,
+    os_name: str = "linux",
 ) -> None:
+    from whichvlm.hardware.catalog import PLAN_SYSTEM_RAM_BYTES
     from whichvlm.output.plan import (
+        plan_multi_gpu_compatibility,
         plan_gpu_compatibility,
-        plan_target_vram,
+        plan_recommendations,
         plan_vram_by_quant,
     )
 
-    vram_by_quant = plan_vram_by_quant(model, context_length)
-    target_vram = plan_target_vram(
-        model, context_length, target_quant, vram_by_quant
+    system_ram_bytes = system_ram_bytes or PLAN_SYSTEM_RAM_BYTES
+    vram_by_quant = plan_vram_by_quant(
+        model, context_length, image_count, image_size, video_frames
+    )
+    single_gpu_rows = plan_gpu_compatibility(
+        model,
+        target_quant,
+        context_length,
+        image_count,
+        image_size,
+        video_frames,
+        system_ram_bytes,
+        min_speed,
+        os_name,
+    )
+    multi_gpu_rows = plan_multi_gpu_compatibility(
+        model,
+        target_quant,
+        context_length,
+        image_count,
+        image_size,
+        video_frames,
+        system_ram_bytes,
+        min_speed,
+        os_name,
     )
 
     output = {
@@ -211,10 +258,17 @@ def display_plan_json(
         },
         "target_quant": target_quant,
         "context_length": context_length,
+        "workload": {
+            "image_count": image_count,
+            "image_size": image_size,
+            "video_frames": video_frames,
+            "system_ram_bytes": system_ram_bytes,
+            "min_speed": min_speed,
+            "os": os_name,
+        },
         "vram_by_quant": vram_by_quant,
-        "gpu_compatibility": plan_gpu_compatibility(
-            model, target_quant, target_vram
-        ),
+        "gpu_compatibility": single_gpu_rows,
+        "reverse_lookup": plan_recommendations(single_gpu_rows, multi_gpu_rows),
     }
     console.console.print_json(json.dumps(output, ensure_ascii=False))
 

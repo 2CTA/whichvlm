@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from dbgpu import GPUSpecification
 
 from whichvlm.constants import AMD_SHARED_MEMORY_APU_MARKERS, GPU_BANDWIDTH, BYTES_PER_GIB
+from whichvlm.hardware.catalog import lookup_catalog_entry
 from whichvlm.hardware.types import BackendCapability, GPUInfo
 
 # GPU simulator. Turns CLI gpu text into synthetic hardware records.
@@ -231,6 +232,24 @@ def create_synthetic_gpu(name: str, vram_override_gb: float | None = None) -> GP
                 BackendCapability("mlx", True, details="Simulated Apple Silicon"),
             ],
             neural_engine_available=True,
+        )
+
+    catalog_hit = lookup_catalog_entry(name)
+    if catalog_hit is not None:
+        vram_gb = (
+            vram_override_gb if vram_override_gb is not None else catalog_hit.vram_gb
+        )
+        return GPUInfo(
+            name=f"{catalog_hit.name} (simulated)",
+            vendor=catalog_hit.vendor,
+            vram_bytes=int(vram_gb * BYTES_PER_GIB),
+            compute_capability=catalog_hit.compute_capability,
+            memory_bandwidth_gbps=catalog_hit.memory_bandwidth_gbps,
+            shared_memory=catalog_hit.shared_memory,
+            backend_capabilities=[
+                BackendCapability(backend, True)
+                for backend in catalog_hit.supported_backends
+            ],
         )
 
     spec = lookup_dbgpu(name)
