@@ -6,6 +6,7 @@ from typing import Literal
 from whichvlm.models.types import GGUFVariant, ModelInfo
 
 SpeedConfidence = Literal["high", "medium", "low"]
+VramConfidence = Literal["high", "medium", "low"]
 FitType = Literal["full_gpu", "partial_offload", "cpu_only"]
 BenchmarkStatus = Literal["direct", "estimated", "self_reported", "none"]
 BenchmarkSource = Literal[
@@ -25,6 +26,10 @@ class CompatibilityResult:
     can_run: bool
     vram_required_bytes: int
     vram_available_bytes: int
+    vram_required_range_bytes: tuple[int, int] | None = None
+    vram_confidence: VramConfidence = "high"
+    vram_breakdown_bytes: dict[str, int] = field(default_factory=dict)
+    vram_notes: list[str] = field(default_factory=list)
     offload_ratio: float = 0.0
     estimated_tok_per_sec: float | None = None
     speed_confidence: SpeedConfidence = "medium"

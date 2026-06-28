@@ -122,6 +122,12 @@ def model_dict(rank: int, result: CompatibilityResult, details: bool = False) ->
             else estimate_weight_bytes(model, None)
         ),
         "vram_required_bytes": result.vram_required_bytes,
+        "vram_required_range_bytes": (
+            list(result.vram_required_range_bytes)
+            if result.vram_required_range_bytes
+            else None
+        ),
+        "vram_confidence": result.vram_confidence,
         "vram_available_bytes": result.vram_available_bytes,
         "estimated_tok_per_sec": result.estimated_tok_per_sec,
         "benchmark_status": result.benchmark_status,
@@ -166,6 +172,8 @@ def model_dict(rank: int, result: CompatibilityResult, details: bool = False) ->
                     else None
                 ),
                 "speed_notes": result.speed_notes,
+                "vram_breakdown_bytes": result.vram_breakdown_bytes,
+                "vram_notes": result.vram_notes,
                 "ranking_freshness_weight": result.ranking_freshness_weight,
             }
         )

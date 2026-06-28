@@ -12,13 +12,14 @@ from whichvlm.constants import (
 )
 from whichvlm.engine.compatibility import check_compatibility
 from whichvlm.engine.performance import estimate_tok_per_sec
-from whichvlm.engine.vram import estimate_vram
+from whichvlm.engine.vram import estimate_vram, estimate_vram_details
 from whichvlm.engine.workload import VisionWorkload
 from whichvlm.hardware.catalog import (
-    HARDWARE_CATALOG,
-    PLAN_SYSTEM_RAM_BYTES,
-    PLAN_VRAM_HEADROOM_RATIO,
-    HardwareCatalogEntry,
+  HARDWARE_CATALOG,
+  GPUInfo,
+  PLAN_SYSTEM_RAM_BYTES,
+  PLAN_VRAM_HEADROOM_RATIO,
+  HardwareCatalogEntry,
 )
 from whichvlm.hardware.types import GPUInfo, HardwareInfo
 from whichvlm.models.types import GGUFVariant, ModelInfo
@@ -75,7 +76,9 @@ def plan_vram_by_quant(
             model, plan_variant_for_quant(model, quant), context_length, vision_workload
         )
         rows[quant] = {
-            "vram_bytes": vram_bytes,
+            "vram_bytes": vram.required_bytes,
+            "vram_range_bytes": [vram.lower_bytes, vram.upper_bytes],
+            "vram_confidence": vram.confidence,
             "quality_loss": QUANT_QUALITY_PENALTY.get(quant, 0.0),
         }
     return rows

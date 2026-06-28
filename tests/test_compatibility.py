@@ -57,6 +57,21 @@ def test_full_gpu_fit():
     assert result.fit_type == "full_gpu"
 
 
+def test_vram_range_and_confidence_are_returned():
+    model = make_model()
+    variant = make_variant(4_000_000_000)
+    hw = make_hardware(vram=24 * 1024**3)
+
+    result = check_compatibility(model, variant, hw)
+
+    assert result.vram_confidence == "low"
+    assert result.vram_required_range_bytes is not None
+    assert result.vram_required_range_bytes[0] < result.vram_required_bytes
+    assert result.vram_required_range_bytes[1] > result.vram_required_bytes
+    assert result.vram_breakdown_bytes["weights"] == 4_000_000_000
+    assert any("KV cache" in note for note in result.vram_notes)
+
+
 def test_partial_offload():
     model = make_model()
     variant = make_variant(20_000_000_000)

@@ -534,6 +534,28 @@ def extract_architecture(config: dict) -> str:
     return ""
 
 
+def int_config(config: dict, *keys: str) -> int | None:
+    for key in keys:
+        value = config.get(key)
+        if isinstance(value, int) and value > 0:
+            return value
+    for key, value in config.items():
+        if key.rsplit(".", 1)[-1] in keys and isinstance(value, int) and value > 0:
+            return value
+    return None
+
+
+def str_config(config: dict, *keys: str) -> str | None:
+    for key in keys:
+        value = config.get(key)
+        if isinstance(value, str) and value:
+            return value
+    for key, value in config.items():
+        if key.rsplit(".", 1)[-1] in keys and isinstance(value, str) and value:
+            return value
+    return None
+
+
 def parse_model(data: dict) -> ModelInfo | None:
     # Main parser. Converts one HF payload into ModelInfo.
     model_id = data.get("id")
@@ -667,14 +689,19 @@ def parse_model(data: dict) -> ModelInfo | None:
 
     architecture = extract_architecture(config)
     gguf_meta = data.get("gguf", {}) or {}
-    if not architecture and isinstance(gguf_meta, dict):
+    if not isinstance(gguf_meta, dict):
+        gguf_meta = {}
+    if not architecture:
         architecture = gguf_meta.get("architecture", "")
 
     context_length = config.get("max_position_embeddings") or config.get(
         "max_sequence_length"
     )
-    if not context_length and isinstance(gguf_meta, dict):
+    if not context_length:
         context_length = gguf_meta.get("context_length")
+    vision_config = config.get("vision_config", {})
+    if not isinstance(vision_config, dict):
+        vision_config = {}
 
     benchmark_scores: dict[str, float] = {}
     eval_score = extract_hf_eval_score(data)
@@ -690,6 +717,71 @@ def parse_model(data: dict) -> ModelInfo | None:
         architecture=architecture,
         is_moe=is_moe,
         context_length=context_length,
+        layer_count=int_config(
+            config,
+            "num_hidden_layers",
+            "num_layers",
+            "n_layer",
+        )
+        or int_config(gguf_meta, "block_count"),
+        hidden_size=int_config(config, "hidden_size", "n_embd", "d_model")
+        or int_config(gguf_meta, "embedding_length"),
+        intermediate_size=int_config(
+            config,
+            "intermediate_size",
+            "n_inner",
+            "ffn_dim",
+        )
+        or int_config(gguf_meta, "feed_forward_length"),
+        attention_heads=int_config(config, "num_attention_heads", "n_head")
+        or int_config(gguf_meta, "head_count"),
+        kv_heads=int_config(
+            config,
+            "num_key_value_heads",
+            "num_kv_heads",
+            "n_head_kv",
+        )
+        or int_config(gguf_meta, "head_count_kv"),
+        head_dim=int_config(config, "head_dim", "head_size")
+        or int_config(
+            gguf_meta,
+            "key_length",
+            "head_dim",
+            "head_size",
+        ),
+        dtype=str_config(config, "torch_dtype", "dtype"),
+        kv_cache_dtype=str_config(config, "kv_cache_dtype"),
+        vision_layer_count=int_config(
+            vision_config,
+            "num_hidden_layers",
+            "num_layers",
+        ),
+        vision_hidden_size=int_config(vision_config, "hidden_size"),
+        vision_intermediate_size=int_config(
+            vision_config,
+            "intermediate_size",
+            "mlp_dim",
+        ),
+        vision_attention_heads=int_config(
+            vision_config,
+            "num_attention_heads",
+            "num_heads",
+        ),
+        projector_hidden_size=int_config(
+            config,
+            "projector_hidden_size",
+            "mm_hidden_size",
+        ),
+        patch_size=int_config(vision_config, "patch_size"),
+        spatial_merge_size=int_config(
+            vision_config,
+            "spatial_merge_size",
+        ),
+        image_token_strategy=str_config(
+            config,
+            "vision_feature_select_strategy",
+            "image_token_strategy",
+        ),
         license=card_data.get("license"),
         published_at=extract_published_at(data),
         downloads=data.get("downloads", 0),
@@ -939,6 +1031,22 @@ def models_to_dicts(models: list[ModelInfo]) -> list[dict]:
             "architecture": model.architecture,
             "is_moe": model.is_moe,
             "context_length": model.context_length,
+            "layer_count": model.layer_count,
+            "hidden_size": model.hidden_size,
+            "intermediate_size": model.intermediate_size,
+            "attention_heads": model.attention_heads,
+            "kv_heads": model.kv_heads,
+            "head_dim": model.head_dim,
+            "dtype": model.dtype,
+            "kv_cache_dtype": model.kv_cache_dtype,
+            "vision_layer_count": model.vision_layer_count,
+            "vision_hidden_size": model.vision_hidden_size,
+            "vision_intermediate_size": model.vision_intermediate_size,
+            "vision_attention_heads": model.vision_attention_heads,
+            "projector_hidden_size": model.projector_hidden_size,
+            "patch_size": model.patch_size,
+            "spatial_merge_size": model.spatial_merge_size,
+            "image_token_strategy": model.image_token_strategy,
             "license": model.license,
             "published_at": model.published_at,
             "downloads": model.downloads,
@@ -1050,6 +1158,22 @@ def dicts_to_models(data: list[dict]) -> list[ModelInfo]:
                 architecture=d.get("architecture", ""),
                 is_moe=d.get("is_moe", False) or active_params is not None,
                 context_length=d.get("context_length"),
+                layer_count=d.get("layer_count"),
+                hidden_size=d.get("hidden_size"),
+                intermediate_size=d.get("intermediate_size"),
+                attention_heads=d.get("attention_heads"),
+                kv_heads=d.get("kv_heads"),
+                head_dim=d.get("head_dim"),
+                dtype=d.get("dtype"),
+                kv_cache_dtype=d.get("kv_cache_dtype"),
+                vision_layer_count=d.get("vision_layer_count"),
+                vision_hidden_size=d.get("vision_hidden_size"),
+                vision_intermediate_size=d.get("vision_intermediate_size"),
+                vision_attention_heads=d.get("vision_attention_heads"),
+                projector_hidden_size=d.get("projector_hidden_size"),
+                patch_size=d.get("patch_size"),
+                spatial_merge_size=d.get("spatial_merge_size"),
+                image_token_strategy=d.get("image_token_strategy"),
                 license=d.get("license"),
                 published_at=d.get("published_at"),
                 downloads=d.get("downloads", 0),

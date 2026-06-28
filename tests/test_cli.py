@@ -1207,6 +1207,16 @@ def json_output_case() -> tuple[CompatibilityResult, HardwareInfo]:
         can_run=True,
         vram_required_bytes=8_000_000_000,
         vram_available_bytes=24_000_000_000,
+        vram_required_range_bytes=(7_000_000_000, 10_000_000_000),
+        vram_confidence="medium",
+        vram_breakdown_bytes={
+            "weights": 6_000_000_000,
+            "kv_cache": 500_000_000,
+            "activations": 700_000_000,
+            "vision": 0,
+            "runtime_overhead": 800_000_000,
+        },
+        vram_notes=["KV cache uses parameter-count fallback"],
         quality_score=55.0,
         benchmark_status="estimated",
         benchmark_source="line_interp",
@@ -1232,6 +1242,11 @@ def test_json_output_defaults_to_compact():
 
     assert compact_entry["model_id"] == "test-org/Test-7B"
     assert compact_entry["benchmark_source"] == "line_interp"
+    assert compact_entry["vram_required_range_bytes"] == [
+        7_000_000_000,
+        10_000_000_000,
+    ]
+    assert compact_entry["vram_confidence"] == "medium"
     assert "artifacts" not in compact_entry
     assert "lineage" not in compact_entry
     assert "budget_notes" not in compact["hardware"]
@@ -1248,6 +1263,8 @@ def test_json_output_includes_diagnostics_when_requested():
     assert entry["benchmark_status"] == "estimated"
     assert entry["benchmark_source"] == "line_interp"
     assert entry["benchmark_confidence"] == 0.34
+    assert entry["vram_breakdown_bytes"]["weights"] == 6_000_000_000
+    assert entry["vram_notes"] == ["KV cache uses parameter-count fallback"]
     assert entry["base_models"] == ["base/Test-7B"]
     assert artifact["format"] == "mlx"
     assert artifact["access"] == "gated"
