@@ -1,5 +1,9 @@
 from whichvlm.engine.quantization import effective_quant_type
-from whichvlm.engine.ranker import partial_offload_quality_factor, rank_models
+from whichvlm.engine.ranker import (
+    detect_specializations,
+    partial_offload_quality_factor,
+    rank_models,
+)
 from whichvlm.hardware.types import BackendCapability, GPUInfo, HardwareInfo
 from whichvlm.models.types import GGUFVariant, ModelArtifact, ModelInfo
 
@@ -185,6 +189,18 @@ def test_cpu_only_backend_filters_out_non_gguf_models():
     results = rank_models([awq_model, gguf_model], hw, top_n=10)
     assert len(results) == 1
     assert results[0].model.id == "Qwen/Qwen3-8B-GGUF"
+
+
+def test_architecture_marks_transformers_vlm_for_vision_profile():
+    model = ModelInfo(
+        id="org/ConfigOnly-3B",
+        family_id="config-only",
+        name="ConfigOnly-3B",
+        parameter_count=3_000_000_000,
+        architecture="paligemma",
+    )
+
+    assert "vision" in detect_specializations(model)
 
 
 def test_apple_mlx_artifact_preferred_over_generic_transformers():

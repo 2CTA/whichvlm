@@ -515,6 +515,13 @@ def extract_architecture(config: dict) -> str:
     if arch_list:
         arch = arch_list[0].lower()
         for name in [
+            "qwen3vl",
+            "qwen2vl",
+            "paligemma",
+            "mllama",
+            "deepseek_vl",
+            "phi3v",
+            "phi3_v",
             "llama",
             "qwen2",
             "mistral",
@@ -668,6 +675,12 @@ def parse_model(data: dict) -> ModelInfo | None:
     )
     access = extract_access(data)
     lineage = build_lineage(base_models, tags, card_data)
+    architecture = extract_architecture(config)
+    gguf_meta = data.get("gguf", {}) or {}
+    if not isinstance(gguf_meta, dict):
+        gguf_meta = {}
+    if not architecture:
+        architecture = gguf_meta.get("architecture", "")
     artifacts = build_artifacts(
         model_id,
         model_format=model_format,
@@ -685,14 +698,8 @@ def parse_model(data: dict) -> ModelInfo | None:
         pipeline_tag=data.get("pipeline_tag"),
         tags=tags,
         lineage=lineage,
+        architecture=architecture,
     )
-
-    architecture = extract_architecture(config)
-    gguf_meta = data.get("gguf", {}) or {}
-    if not isinstance(gguf_meta, dict):
-        gguf_meta = {}
-    if not architecture:
-        architecture = gguf_meta.get("architecture", "")
 
     context_length = config.get("max_position_embeddings") or config.get(
         "max_sequence_length"
@@ -1147,6 +1154,7 @@ def dicts_to_models(data: list[dict]) -> list[ModelInfo]:
                 pipeline_tag=d.get("hf_pipeline_tag"),
                 tags=tags,
                 lineage=lineage,
+                architecture=d.get("architecture", ""),
             )
         models.append(
             ModelInfo(

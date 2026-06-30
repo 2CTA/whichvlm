@@ -42,6 +42,22 @@ def test_transformers_vlm_script_uses_processor_and_image_path():
     assert '{"type": "image", "image": image}' in script
 
 
+def test_runtime_detects_vlm_from_architecture():
+    model = ModelInfo(
+        id="org/ConfigOnly-3B",
+        family_id="config-only",
+        name="ConfigOnly-3B",
+        parameter_count=3_000_000_000,
+        architecture="paligemma",
+    )
+
+    deps, script_type = resolve_model_deps(model, None)
+
+    assert requires_image(model)
+    assert "pillow" in deps
+    assert script_type == "transformers_vlm"
+
+
 def test_gguf_vlm_runtime_requires_projector_artifact():
     model = vlm_model(
         gguf_variants=[

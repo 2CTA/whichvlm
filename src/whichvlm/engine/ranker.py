@@ -26,6 +26,7 @@ from whichvlm.models.benchmark import (
     build_score_index,
     lookup_benchmark_evidence,
 )
+from whichvlm.models.package_graph import is_vision_model
 from whichvlm.models.types import GGUFVariant, ModelInfo
 
 # Ranking core. Expands variants, scores fit, and orders final picks.
@@ -384,10 +385,11 @@ def detect_specializations(model: ModelInfo) -> set[str]:
         lower,
     ):
         tags.update({"ocr", "vision"})
-    if re.search(
-        r"(^|[-_/])(vl|vision|multimodal|llava|image)([-_/]|$)|"
-        r"image-text-to-text|visual-question-answering|image-to-text|internvl|pixtral",
-        lower,
+    if is_vision_model(
+        model.id, model.hf_pipeline_tag, model.tags, model.architecture
+    ) or any(
+        component.role in {"vision_encoder", "projector", "processor"}
+        for component in model.components
     ):
         tags.add("vision")
     if re.search(r"(^|[-_/])math([-_/]|$)", lower):

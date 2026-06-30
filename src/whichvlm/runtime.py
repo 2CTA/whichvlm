@@ -11,8 +11,10 @@ class RuntimeUnsupportedError(ValueError):
 
 
 def is_vlm_model(model: ModelInfo) -> bool:
-    # VLM check. Detects image-capable models from tags and components.
-    if is_vision_model(model.id, model.hf_pipeline_tag, model.tags):
+    # VLM check. Detects image-capable models from HF metadata and components.
+    if is_vision_model(
+        model.id, model.hf_pipeline_tag, model.tags, model.architecture
+    ):
         return True
     return any(
         component.role in {"vision_encoder", "projector", "processor"}

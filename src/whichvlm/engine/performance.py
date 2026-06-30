@@ -3,6 +3,7 @@ from __future__ import annotations
 from whichvlm.engine.quantization import estimate_weight_bytes
 from whichvlm.engine.quantization import effective_quant_type
 from whichvlm.hardware.types import GPUInfo
+from whichvlm.models.package_graph import is_vision_model
 from whichvlm.models.types import GGUFVariant, ModelInfo
 
 # Speed model. Uses bandwidth, quant, and fit as the main signals.
@@ -124,11 +125,9 @@ def looks_synthetic_gguf(model: ModelInfo, variant: GGUFVariant | None) -> bool:
 
 
 def is_vlm_model(model: ModelInfo) -> bool:
-    if model.hf_pipeline_tag in {
-        "image-text-to-text",
-        "visual-question-answering",
-        "image-to-text",
-    }:
+    if is_vision_model(
+        model.id, model.hf_pipeline_tag, model.tags, model.architecture
+    ):
         return True
     return any(
         component.role in {"vision_encoder", "projector", "processor"}

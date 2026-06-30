@@ -61,13 +61,21 @@ def is_projector_filename(filename: str) -> bool:
     return "mmproj" in lower or "projector" in lower
 
 
-def is_vision_model(model_id: str, pipeline_tag: object, tags: list[str]) -> bool:
-    haystack = " ".join([model_id, str(pipeline_tag or ""), *tags]).lower()
+def is_vision_model(
+    model_id: str,
+    pipeline_tag: object,
+    tags: list[str],
+    architecture: str = "",
+) -> bool:
+    haystack = " ".join(
+        [model_id, str(pipeline_tag or ""), architecture, *tags]
+    ).lower()
     return bool(
         re.search(
             r"(image-text-to-text|visual-question-answering|image-to-text|"
             r"vision-language|multimodal|qwen.*vl|llava|pixtral|internvl|"
-            r"deepseek-vl|vision)",
+            r"deepseek[-_]vl|paligemma|idefics|mllama|phi3v|phi3_v|glm4v|"
+            r"xgenmm|fuyu|kosmos|instructblip|blip|florence|vision)",
             haystack,
         )
     )
@@ -175,6 +183,7 @@ def build_components(
     pipeline_tag: object,
     tags: list[str],
     lineage: ModelLineage,
+    architecture: str = "",
 ) -> list[ModelComponent]:
     # Component builder. Describes language, vision, and projector pieces.
     if lineage.is_merged:
@@ -186,7 +195,7 @@ def build_components(
                 quantization=quantization_type,
             )
         ]
-    if not is_vision_model(model_id, pipeline_tag, tags):
+    if not is_vision_model(model_id, pipeline_tag, tags, architecture):
         return []
     return [
         ModelComponent(
