@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from whichvlm.engine.quantization import estimate_weight_bytes
 from whichvlm.engine.quantization import effective_quant_type
+from whichvlm.engine.workload import Workload
 from whichvlm.hardware.types import GPUInfo
 from whichvlm.models.types import GGUFVariant, ModelInfo
-
-# Speed model. Uses bandwidth, quant, and fit as the main signals.
 
 QUANT_EFFICIENCY: dict[str, float] = {
     "F32": 0.30,
@@ -19,8 +18,6 @@ QUANT_EFFICIENCY: dict[str, float] = {
     "Q4_K_M": 0.55,
     "Q4_K_S": 0.55,
     "Q4_0": 0.53,
-
-
     "NVFP4": 0.56,
     "MXFP4": 0.55,
     "Q3_K_M": 0.50,
@@ -70,6 +67,14 @@ SPEED_CONFIDENCE_ORDER = {
     "medium": 1,
     "high": 2,
 }
+MULTIMODAL_PIPELINE_TAGS = {
+    "image-text-to-text",
+    "visual-question-answering",
+    "image-to-text",
+    "video-text-to-text",
+    "audio-text-to-text",
+    "automatic-speech-recognition",
+}
 
 
 def backend_factor(gpu: GPUInfo) -> float:
@@ -86,7 +91,6 @@ def quant_efficiency(model: ModelInfo, variant: GGUFVariant | None) -> float:
 
 
 def moe_effective_read_ratio(model: ModelInfo, gpu: GPUInfo) -> float:
-    # MoE read model. Shrinks stored params down to active token reads.
     if not model.is_moe or not model.parameter_count_active:
         return 1.0
     if model.parameter_count <= 0:
@@ -123,27 +127,49 @@ def looks_synthetic_gguf(model: ModelInfo, variant: GGUFVariant | None) -> bool:
     return variant.filename == expected
 
 
-def is_vlm_model(model: ModelInfo) -> bool:
-    if model.hf_pipeline_tag in {
-        "image-text-to-text",
-        "visual-question-answering",
-        "image-to-text",
-    }:
+def is_multimodal_model(model: ModelInfo) -> bool:
+    caps = model.capabilities
+    if caps.image or caps.video or caps.audio:
+        return True
+    if model.hf_pipeline_tag in MULTIMODAL_PIPELINE_TAGS:
         return True
     return any(
-        component.role in {"vision_encoder", "projector", "processor"}
+        component.role
+        in {
+            "vision_encoder",
+            "video_encoder",
+            "audio_encoder",
+            "projector",
+            "processor",
+        }
         for component in model.components
     )
 
 
-def vlm_decode_factor(model: ModelInfo, gpu: GPUInfo | None, fit_type: str) -> float:
-    if not is_vlm_model(model):
+def vlm_decode_factor(
+    model: ModelInfo,
+    gpu: GPUInfo | None,
+    fit_type: str,
+    workload: Workload | None = None,
+) -> float:
+    if not is_multimodal_model(model):
         return 1.0
     factor = 0.78
     if fit_type == "partial_offload":
         factor *= 0.90
     if gpu is not None and gpu.vendor == "apple":
         factor *= 0.95
+    if workload is not None:
+        wl = workload.normalized()
+        visual_inputs = wl.image_count + wl.video_frames
+        if visual_inputs > 1:
+            factor /= 1.0 + 0.08 * (visual_inputs - 1)
+        if wl.image_size > 448:
+            factor /= (wl.image_size / 448) ** 0.35
+        if wl.audio_seconds > 0:
+            factor /= 1.0 + wl.audio_seconds / 600.0
+        if wl.batch_size > 1:
+            factor /= wl.batch_size**0.25
     return factor
 
 
@@ -154,7 +180,6 @@ def estimate_speed_uncertainty(
     fit_type: str,
     estimated_tok_per_sec: float | None,
 ) -> tuple[str, tuple[float, float] | None, list[str]]:
-    # Confidence layer. Explains how shaky the speed point estimate is.
     notes = [
         "Speed is estimated from memory bandwidth, quantization, backend, and fit type."
     ]
@@ -211,10 +236,10 @@ def estimate_speed_uncertainty(
             "This is a synthetic GGUF estimate for an official repo, not a measured GGUF file."
         )
 
-    if is_vlm_model(model):
+    if is_multimodal_model(model):
         confidence = lower_speed_confidence(confidence, "medium")
         notes.append(
-            "VLM speed includes a conservative discount for image prefill and projector overhead."
+            "Multimodal speed includes a conservative discount for media prefill and projector overhead."
         )
 
     low_factor, high_factor = SPEED_CONFIDENCE_RANGE_FACTORS[confidence]
@@ -230,8 +255,8 @@ def estimate_tok_per_sec(
     variant: GGUFVariant | None,
     gpu: GPUInfo | None,
     fit_type: str = "full_gpu",
+    workload: Workload | None = None,
 ) -> float:
-    # Main speed pass. Estimates decode rate for one model and backend.
     if gpu is None or fit_type == "cpu_only":
         params_b = model.parameter_count / 1e9
         if model.is_moe and model.parameter_count_active:
@@ -239,13 +264,11 @@ def estimate_tok_per_sec(
         if params_b <= 0:
             return 0.0
 
-
         quant_factor = quant_efficiency(model, variant) / DEFAULT_QUANT_EFFICIENCY
         text_speed = max(0.3, 18.0 / max(params_b, 0.5) * quant_factor)
-        return text_speed * vlm_decode_factor(model, gpu, fit_type)
+        return text_speed * vlm_decode_factor(model, gpu, fit_type, workload)
 
     model_size = estimate_weight_bytes(model, variant)
-
 
     if model.is_moe and model.parameter_count_active:
         effective_read = model_size * moe_effective_read_ratio(model, gpu)
@@ -258,9 +281,7 @@ def estimate_tok_per_sec(
 
     theoretical = bandwidth / effective_read
 
-
     efficiency = quant_efficiency(model, variant) * backend_factor(gpu)
-
 
     if fit_type == "partial_offload":
         if gpu.vendor == "apple" or gpu.shared_memory:
@@ -268,4 +289,4 @@ def estimate_tok_per_sec(
         else:
             efficiency *= 0.45
 
-    return theoretical * efficiency * vlm_decode_factor(model, gpu, fit_type)
+    return theoretical * efficiency * vlm_decode_factor(model, gpu, fit_type, workload)

@@ -86,7 +86,6 @@ def top_pick_confidence(results: list[CompatibilityResult]) -> tuple[str, str]:
         confidence = "Low"
         reason = f"direct benchmark but very close (+{gap:.1f}){risk_note}"
 
-
     if top.fit_type != "full_gpu" or top.speed_confidence == "low":
         if confidence == "High":
             confidence = "Medium"
@@ -327,14 +326,12 @@ def display_ranking(
         "vision scores lead VLMs, text scores are fallback evidence.[/dim]"
     )
 
-
     if len(results) >= 2:
         gap = results[0].quality_score - results[1].quality_score
         if gap < 1.5:
             console.console.print(
                 f"  [yellow]Note:[/] Top candidates are very close (#{1} vs #{2}: {gap:.1f} pts)."
             )
-
 
     weak_top = [
         idx + 1 for idx, r in enumerate(results[:3]) if r.benchmark_status != "direct"

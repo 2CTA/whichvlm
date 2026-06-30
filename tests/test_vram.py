@@ -233,15 +233,18 @@ def test_spatial_merge_reduces_vision_tokens():
     merge_2 = make_model(7_000_000_000, spatial_merge_size=2, **base)
     workload = VisionWorkload(image_count=1, image_size=448)
 
-    assert estimate_vram_details(
-        no_merge,
-        None,
-        vision_workload=workload,
-    ).components.vision > estimate_vram_details(
-        merge_2,
-        None,
-        vision_workload=workload,
-    ).components.vision
+    assert (
+        estimate_vram_details(
+            no_merge,
+            None,
+            vision_workload=workload,
+        ).components.vision
+        > estimate_vram_details(
+            merge_2,
+            None,
+            vision_workload=workload,
+        ).components.vision
+    )
 
 
 def test_estimate_vram_small_model():

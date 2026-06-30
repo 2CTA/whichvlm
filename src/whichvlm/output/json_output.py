@@ -188,8 +188,7 @@ def display_json(
     output = {
         "hardware": hardware_dict(hardware, details),
         "models": [
-            model_dict(i, result, details)
-            for i, result in enumerate(results, 1)
+            model_dict(i, result, details) for i, result in enumerate(results, 1)
         ],
     }
     if details:

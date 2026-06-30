@@ -358,7 +358,6 @@ def test_apple_silicon_does_not_double_count_unified_memory():
 
     result = check_compatibility(model, variant, hw)
 
-
     assert result.fit_type != "partial_offload", (
         "Apple Silicon should not get partial_offload — unified memory "
         "cannot be double-counted as GPU VRAM + CPU RAM offload pool"

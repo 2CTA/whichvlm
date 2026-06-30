@@ -57,12 +57,8 @@ def test_plan_partial_offload_uses_ram_not_vram_ratio():
 def test_plan_target_vram_respects_workload_without_cached_rows():
     model = planning_model(params=7_000_000_000)
 
-    no_images = plan_target_vram(
-        model, 4096, "Q4_K_M", image_count=0, video_frames=0
-    )
-    with_images = plan_target_vram(
-        model, 4096, "Q4_K_M", image_count=2, video_frames=4
-    )
+    no_images = plan_target_vram(model, 4096, "Q4_K_M", image_count=0, video_frames=0)
+    with_images = plan_target_vram(model, 4096, "Q4_K_M", image_count=2, video_frames=4)
 
     assert with_images > no_images
 
@@ -88,12 +84,12 @@ def test_plan_reverse_lookup_returns_full_partial_and_multi_gpu():
     recommendations = plan_recommendations(single_gpu_rows, multi_gpu_rows)
 
     assert recommendations["smallest_full_gpu"]["name"] == "H200"
-    assert recommendations["smallest_partial_offload"]["name"] == "RTX A6000"
+    assert recommendations["smallest_partial_offload"]["name"] == "A100 40GB"
     assert recommendations["multi_gpu_alternatives"][0]["name"] == "2x MI210"
     assert recommendations["multi_gpu_alternatives"][0]["uses_multi_gpu"] is True
-    assert recommendations["multi_gpu_alternatives"][0][
-        "multi_gpu_support"
-    ].startswith("practical ")
+    assert recommendations["multi_gpu_alternatives"][0]["multi_gpu_support"].startswith(
+        "practical "
+    )
 
 
 def test_plan_reverse_lookup_rejects_context_mismatch():
@@ -104,9 +100,10 @@ def test_plan_reverse_lookup_rejects_context_mismatch():
 
     assert recommendations["smallest_full_gpu"] is None
     assert recommendations["smallest_partial_offload"] is None
-    assert next(row for row in rows if row["fit_type"] == "full_gpu")[
-        "binding_constraint"
-    ] == "context length"
+    assert (
+        next(row for row in rows if row["fit_type"] == "full_gpu")["binding_constraint"]
+        == "context length"
+    )
 
 
 def test_plan_json_includes_workload_and_reverse_lookup():

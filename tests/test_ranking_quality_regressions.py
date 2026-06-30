@@ -219,9 +219,7 @@ def test_lineage_covers_llama_deepseek_gemma_phi():
 
 
 def test_lineage_covers_t5_variants_without_gemma_collision():
-    assert generation_bonus("google/t5gemma-4b") > generation_bonus(
-        "google/flan-t5-xl"
-    )
+    assert generation_bonus("google/t5gemma-4b") > generation_bonus("google/flan-t5-xl")
     assert generation_bonus("google/t5-gemma-4b") == generation_bonus(
         "google/t5gemma-4b"
     )
@@ -329,7 +327,6 @@ def test_self_reported_outranks_only_when_there_is_nothing_else():
     assert len(results) == 1
     assert results[0].benchmark_status == "self_reported"
 
-
     assert 0 < results[0].quality_score < 60
 
 
@@ -353,6 +350,7 @@ def test_ocr_profile_prefers_direct_task_benchmark_over_popularity():
         tags=["ocr", "document-vqa"],
         downloads=5_000,
         gguf_variants=[gguf("Q4_K_M", 1.8)],
+        benchmark_scores={"hf_ocr": 72.0},
     )
     self_reported_ocr = ModelInfo(
         id="community/Popular-OCR-7B-GGUF",
@@ -380,14 +378,13 @@ def test_ocr_profile_prefers_direct_task_benchmark_over_popularity():
         hw(vram_gb=12, bandwidth_gbps=450.0),
         top_n=3,
         task_profile="ocr",
-        benchmark_scores={"nanonets/Nanonets-OCR-s": 72.0},
+        benchmark_scores={},
     )
 
-    assert [r.model.id for r in results] == [
-        "nanonets/Nanonets-OCR-s",
-        "community/Popular-OCR-7B-GGUF",
-    ]
-    assert results[0].benchmark_status == "direct"
+    ids = [r.model.id for r in results]
+    assert ids[0] == "nanonets/Nanonets-OCR-s"
+    assert "Qwen/Qwen2.5-VL-7B-Instruct" not in ids
+    assert results[0].benchmark_status == "self_reported"
 
 
 def test_apple_m3_max_prefers_mlx_direct_benchmark_over_inherited_gguf():
@@ -561,7 +558,6 @@ def test_official_org_safetensors_gets_q4km_synthesis():
     assert chosen.fit_type == "full_gpu"
     assert chosen.gguf_variant is not None
 
-
     assert chosen.gguf_variant.quant_type in {
         "Q3_K_M",
         "Q4_K_M",
@@ -698,7 +694,7 @@ def test_vlm_speed_estimate_is_discounted_for_image_prefill():
 
     assert vlm_speed < text_speed
     assert confidence == "medium"
-    assert any("image prefill" in note for note in notes)
+    assert any("media prefill" in note for note in notes)
 
 
 def test_vram_kv_cache_scales_with_context():

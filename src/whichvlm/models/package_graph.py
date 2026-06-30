@@ -5,18 +5,16 @@ import re
 from whichvlm.models.types import (
     GGUFVariant,
     ModelArtifact,
+    ModelCapabilities,
     ModelComponent,
     ModelInfo,
     ModelLineage,
 )
 
-# Package graph. Stores artifacts, components, and lineage per model.
 
 def looks_quantized_repo_name(model_id: str) -> bool:
     lower = model_id.lower()
-    return bool(
-        re.search(r"(gptq|awq|bnb|4bit|int4|int8|fp8|gguf|mlx|quant)", lower)
-    )
+    return bool(re.search(r"(gptq|awq|bnb|4bit|int4|int8|fp8|gguf|mlx|quant)", lower))
 
 
 def artifact_format(model_format: str, quantization_type: str | None) -> str:
@@ -37,7 +35,6 @@ def backend_support_for_artifact(
     artifact_format_value: str,
     quantization_type: str | None,
 ) -> list[str]:
-    # Backend map. Tells ranking which runtimes each artifact can use.
     fmt = artifact_format_value.lower()
     quant = (quantization_type or "").upper()
     if fmt == "gguf":
@@ -95,9 +92,9 @@ def build_lineage(
     card_data: dict,
 ) -> ModelLineage:
     relationship = lineage_relationship(card_data, base_models, tags)
-    is_merged = relationship in {"merge", "merged", "fused", "fusion"} or len(
-        base_models
-    ) > 1
+    is_merged = (
+        relationship in {"merge", "merged", "fused", "fusion"} or len(base_models) > 1
+    )
     return ModelLineage(
         base_model_ids=list(base_models),
         merged_parent_ids=list(base_models) if is_merged else [],
@@ -118,7 +115,6 @@ def build_artifacts(
     parameter_count: int,
     projector_files: list[tuple[str, int | None]] | None = None,
 ) -> list[ModelArtifact]:
-    # Artifact builder. Expands one model record into runnable file entries.
     projector_artifacts = [
         ModelArtifact(
             repo_id=model_id,
@@ -176,7 +172,6 @@ def build_components(
     tags: list[str],
     lineage: ModelLineage,
 ) -> list[ModelComponent]:
-    # Component builder. Describes language, vision, and projector pieces.
     if lineage.is_merged:
         return [
             ModelComponent(
@@ -278,6 +273,38 @@ def component_from_dict(data: dict) -> ModelComponent:
     )
 
 
+def capabilities_to_dict(capabilities: ModelCapabilities) -> dict:
+    return {
+        "image": capabilities.image,
+        "video": capabilities.video,
+        "audio": capabilities.audio,
+        "ocr": capabilities.ocr,
+        "document": capabilities.document,
+        "chart": capabilities.chart,
+        "multi_image": capabilities.multi_image,
+        "tool_use": capabilities.tool_use,
+        "supported_languages": capabilities.supported_languages,
+    }
+
+
+def capabilities_from_dict(data: dict | None) -> ModelCapabilities:
+    if not isinstance(data, dict):
+        return ModelCapabilities()
+    return ModelCapabilities(
+        image=bool(data.get("image", False)),
+        video=bool(data.get("video", False)),
+        audio=bool(data.get("audio", False)),
+        ocr=bool(data.get("ocr", False)),
+        document=bool(data.get("document", False)),
+        chart=bool(data.get("chart", False)),
+        multi_image=bool(data.get("multi_image", False)),
+        tool_use=bool(data.get("tool_use", False)),
+        supported_languages=[
+            str(v) for v in data.get("supported_languages", []) if isinstance(v, str)
+        ],
+    )
+
+
 def lineage_to_dict(lineage: ModelLineage) -> dict:
     return {
         "base_model_ids": lineage.base_model_ids,
@@ -332,7 +359,9 @@ def merge_family_lineage(group: list[ModelInfo]) -> ModelLineage:
     is_merged = False
 
     for model in group:
-        for base_id in model.base_models or ([] if not model.base_model else [model.base_model]):
+        for base_id in model.base_models or (
+            [] if not model.base_model else [model.base_model]
+        ):
             if base_id not in base_ids:
                 base_ids.append(base_id)
         for parent_id in model.lineage.merged_parent_ids:
