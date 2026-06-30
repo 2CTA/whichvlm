@@ -1047,7 +1047,8 @@ def test_transformers_chat_script_passes_tokenizer_mapping_to_generate():
     )
 
     assert "return_dict=True" in script
-    assert "kwargs=dict(**inputs, max_new_tokens=512, streamer=streamer)" in script
+    assert "model.generate(**inputs, max_new_tokens=512, streamer=streamer)" in script
+    assert "torch.inference_mode()" in script
     assert "kwargs=dict(input_ids=inputs" not in script
 
 
