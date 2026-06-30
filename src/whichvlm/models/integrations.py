@@ -70,14 +70,8 @@ def _matches_profile(
     pipeline_tag: object,
     tags: list[str],
     architecture: str = "",
-    component_roles: tuple[str, ...] = (),
 ) -> bool:
     if pipeline_tag in profile.pipeline_tags:
-        return True
-    if profile.integration_id == "vision-language" and any(
-        role in profile.component_roles and role != "language"
-        for role in component_roles
-    ):
         return True
     haystack = " ".join(
         [model_id, str(pipeline_tag or ""), *tags, architecture]
@@ -90,18 +84,10 @@ def capability_names_for_data(
     pipeline_tag: object,
     tags: list[str],
     architecture: str = "",
-    component_roles: tuple[str, ...] = (),
 ) -> list[str]:
     capabilities: list[str] = []
     for profile in INTEGRATION_PROFILES:
-        if _matches_profile(
-            profile,
-            model_id,
-            pipeline_tag,
-            tags,
-            architecture,
-            component_roles,
-        ):
+        if _matches_profile(profile, model_id, pipeline_tag, tags, architecture):
             _append_unique(capabilities, profile.capability_names)
     return capabilities
 

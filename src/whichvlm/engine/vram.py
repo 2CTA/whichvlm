@@ -284,7 +284,7 @@ def supports_visual_inputs(model: ModelInfo) -> bool:
     if model.hf_pipeline_tag in VISUAL_PIPELINE_TAGS:
         return True
     return any(
-        component.role in {"vision_encoder", "video_encoder", "projector", "processor"}
+        component.role in {"vision_encoder", "video_encoder", "projector"}
         for component in model.components
     )
 

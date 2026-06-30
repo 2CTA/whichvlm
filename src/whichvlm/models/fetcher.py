@@ -316,12 +316,18 @@ def infer_model_capabilities(
     if video:
         image = True
 
+    architecture = " ".join(metadata_words(config.get("architectures")))
+    if not architecture:
+        architecture = str(
+            config.get("architecture") or config.get("model_type") or ""
+        )
+    supported_languages = extract_languages(card_data, tags)
     registry_caps = capabilities_for_data(
         model_id,
         pipeline_tag,
         tags,
-        " ".join(metadata_words(config.get("architectures"))),
-        extract_languages(card_data, tags),
+        architecture,
+        supported_languages,
     )
     return ModelCapabilities(
         image=image or registry_caps.image,

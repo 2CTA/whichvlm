@@ -4,6 +4,7 @@ from whichvlm.models.types import (
     GGUFVariant,
     ModelArtifact,
     ModelCapabilities,
+    ModelComponent,
     ModelInfo,
 )
 from whichvlm.hardware.types import BackendCapability, GPUInfo, HardwareInfo
@@ -52,6 +53,23 @@ def test_runtime_uses_cached_vision_capability():
     assert requires_image(model)
     assert "pillow" in deps
     assert script_type == "transformers_vlm"
+
+
+def test_audio_processor_does_not_require_image():
+    model = ModelInfo(
+        id="org/Audio-7B",
+        family_id="audio-7b",
+        name="Audio-7B",
+        parameter_count=7_000_000_000,
+        capabilities=ModelCapabilities(audio=True),
+        components=[
+            ModelComponent(role="language", repo_id="org/Audio-7B"),
+            ModelComponent(role="audio_encoder", repo_id="org/Audio-7B"),
+            ModelComponent(role="processor", repo_id="org/Audio-7B"),
+        ],
+    )
+
+    assert not requires_image(model)
 
 
 def test_transformers_vlm_script_uses_processor_and_image_path():

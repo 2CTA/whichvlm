@@ -203,9 +203,9 @@ def test_dicts_to_models_restores_capability_components_from_architecture():
     models = dicts_to_models(
         [
             {
-                "id": "org/Qwen2-VL-7B",
-                "family_id": "qwen2-vl-7b",
-                "name": "Qwen2-VL-7B",
+                "id": "org/Archived-7B",
+                "family_id": "archived-7b",
+                "name": "Archived-7B",
                 "parameter_count": 7_000_000_000,
                 "architecture": "qwen2vl",
                 "downloads": 1,

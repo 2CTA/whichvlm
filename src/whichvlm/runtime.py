@@ -250,7 +250,7 @@ def is_vlm_model(model: ModelInfo) -> bool:
     }:
         return True
     return any(
-        component.role in {"vision_encoder", "video_encoder", "projector", "processor"}
+        component.role in {"vision_encoder", "video_encoder", "projector"}
         for component in model.components
     )
 
