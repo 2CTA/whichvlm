@@ -6,7 +6,7 @@ from whichvlm.constants import VULKAN_ONLY_GPUS
 from whichvlm.engine.quantization import estimate_weight_bytes
 from whichvlm.engine.types import CompatibilityResult
 from whichvlm.engine.vram import estimate_vram_details
-from whichvlm.engine.workload import VisionWorkload
+from whichvlm.engine.workload import Workload
 from whichvlm.hardware.memory import effective_usable_ram
 from whichvlm.hardware.types import GPUInfo, HardwareInfo
 from whichvlm.models.types import GGUFVariant, ModelInfo
@@ -116,7 +116,7 @@ def check_compatibility(
     variant: GGUFVariant | None,
     hardware: HardwareInfo,
     context_length: int = 4096,
-    vision_workload: VisionWorkload | None = None,
+    vision_workload: Workload | None = None,
 ) -> CompatibilityResult:
     # Main fit pass. Produces run type, budgets, and hardware warnings.
     warnings: list[str] = []
@@ -167,7 +167,6 @@ def check_compatibility(
                 f"Compute capability {best_gpu.compute_capability} is below "
                 f"minimum {MIN_COMPUTE_CAPABILITY_OLLAMA} for Ollama"
             )
-
 
     if best_gpu and is_vulkan_only_gpu(best_gpu):
         warnings.append(
@@ -234,7 +233,6 @@ def check_compatibility(
         warnings.append(
             f"Large context ({context_length}) increases VRAM usage significantly"
         )
-
 
     file_size = estimate_weight_bytes(model, variant)
     if hardware.disk_free_bytes > 0 and file_size > hardware.disk_free_bytes:

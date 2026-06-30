@@ -609,7 +609,6 @@ def test_parse_model_preserves_multi_parent_merged_lineage():
 
 def test_deepseek_v4_flash_uses_model_card_counts_over_hf_tensor_metadata():
 
-
     parsed = parse_model(
         {
             "id": "deepseek-ai/DeepSeek-V4-Flash",

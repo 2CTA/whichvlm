@@ -1,7 +1,13 @@
 from whichvlm.engine.quantization import effective_quant_type
 from whichvlm.engine.ranker import partial_offload_quality_factor, rank_models
+from whichvlm.engine.workload import Workload
 from whichvlm.hardware.types import BackendCapability, GPUInfo, HardwareInfo
-from whichvlm.models.types import GGUFVariant, ModelArtifact, ModelInfo
+from whichvlm.models.types import (
+    GGUFVariant,
+    ModelArtifact,
+    ModelCapabilities,
+    ModelInfo,
+)
 
 
 def make_hardware(
@@ -34,7 +40,6 @@ def make_hardware(
 
 
 def test_ranker_picks_highest_scoring_variant():
-
 
     model = ModelInfo(
         id="org/Test-8B-GGUF",
@@ -447,6 +452,109 @@ def test_general_profile_excludes_specialized_models():
     assert "Coder" not in results[0].model.id
 
 
+def test_ocr_workload_prioritizes_ocr_evidence():
+    generic = ModelInfo(
+        id="org/Generic-VL-7B",
+        family_id="generic-vl-7b",
+        name="Generic-VL-7B",
+        parameter_count=7_000_000_000,
+        downloads=1000,
+        likes=100,
+        capabilities=ModelCapabilities(image=True, ocr=True),
+        benchmark_scores={"hf_eval": 90.0},
+    )
+    ocr_model = ModelInfo(
+        id="org/OCR-VL-7B",
+        family_id="ocr-vl-7b",
+        name="OCR-VL-7B",
+        parameter_count=7_000_000_000,
+        downloads=1000,
+        likes=100,
+        capabilities=ModelCapabilities(image=True, ocr=True, document=True),
+        benchmark_scores={"hf_ocr": 80.0},
+    )
+
+    results = rank_models(
+        [generic, ocr_model],
+        make_hardware(),
+        top_n=2,
+        task_profile="ocr",
+        workload=Workload(task="ocr", context_length=4096, image_count=1),
+    )
+
+    assert results[0].model.id == "org/OCR-VL-7B"
+    assert results[0].benchmark_source == "self_reported"
+
+
+def test_ocr_workload_does_not_inherit_generic_benchmark_scores():
+    model = ModelInfo(
+        id="org/Generic-OCR-VL-7B",
+        family_id="generic-ocr-vl-7b",
+        name="Generic-OCR-VL-7B",
+        parameter_count=7_000_000_000,
+        downloads=1000,
+        likes=100,
+        capabilities=ModelCapabilities(image=True, ocr=True),
+    )
+
+    results = rank_models(
+        [model],
+        make_hardware(),
+        top_n=1,
+        benchmark_scores={"org/Generic-OCR-VL-7B": 99.0},
+        task_profile="ocr",
+        workload=Workload(task="ocr", context_length=4096, image_count=1),
+    )
+
+    assert results[0].benchmark_source == "none"
+
+
+def test_video_workload_does_not_inherit_generic_benchmark_scores():
+    video_model = ModelInfo(
+        id="org/Video-VL-7B",
+        family_id="video-vl-7b",
+        name="Video-VL-7B",
+        parameter_count=7_000_000_000,
+        downloads=1000,
+        likes=100,
+        capabilities=ModelCapabilities(image=True, video=True),
+    )
+
+    results = rank_models(
+        [video_model],
+        make_hardware(),
+        top_n=1,
+        benchmark_scores={"org/Video-VL-7B": 99.0},
+        task_profile="video",
+        workload=Workload(task="video", context_length=4096, video_frames=8),
+    )
+
+    assert results[0].benchmark_source == "none"
+
+
+def test_audio_workload_does_not_inherit_generic_benchmark_scores():
+    audio_model = ModelInfo(
+        id="org/Audio-VL-7B",
+        family_id="audio-vl-7b",
+        name="Audio-VL-7B",
+        parameter_count=7_000_000_000,
+        downloads=1000,
+        likes=100,
+        capabilities=ModelCapabilities(audio=True),
+    )
+
+    results = rank_models(
+        [audio_model],
+        make_hardware(),
+        top_n=1,
+        benchmark_scores={"org/Audio-VL-7B": 99.0},
+        task_profile="audio",
+        workload=Workload(task="audio", context_length=4096, audio_seconds=30.0),
+    )
+
+    assert results[0].benchmark_source == "none"
+
+
 def test_require_direct_top_prioritizes_direct_benchmark():
     direct_model = ModelInfo(
         id="Qwen/direct-7b",
@@ -485,7 +593,6 @@ def test_require_direct_top_prioritizes_direct_benchmark():
         top_n=10,
         benchmark_scores={
             "Qwen/direct-7b": 65.0,
-
             "Qwen/Qwen3-32B": 80.0,
         },
         task_profile="any",
@@ -543,7 +650,6 @@ def test_min_params_filter_excludes_small_models():
 
 
 def test_general_profile_prefers_full_gpu_when_direct_is_partial():
-
 
     partial_direct = ModelInfo(
         id="Qwen/Qwen2.5-72B-Instruct",
@@ -620,7 +726,6 @@ def test_family_dedup_prefers_direct_when_enabled():
 
 def test_full_gpu_estimated_ranks_above_partial_direct():
 
-
     partial_direct = ModelInfo(
         id="Qwen/Qwen2.5-72B-Instruct",
         family_id="qwen2.5-72b",
@@ -650,7 +755,6 @@ def test_full_gpu_estimated_ranks_above_partial_direct():
         require_direct_top=True,
         min_params_b=7.0,
     )
-
 
     assert results
     assert results[0].fit_type == "full_gpu"

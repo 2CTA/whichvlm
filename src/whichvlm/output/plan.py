@@ -15,11 +15,10 @@ from whichvlm.engine.performance import estimate_tok_per_sec
 from whichvlm.engine.vram import estimate_vram, estimate_vram_details
 from whichvlm.engine.workload import VisionWorkload
 from whichvlm.hardware.catalog import (
-  HARDWARE_CATALOG,
-  GPUInfo,
-  PLAN_SYSTEM_RAM_BYTES,
-  PLAN_VRAM_HEADROOM_RATIO,
-  HardwareCatalogEntry,
+    HARDWARE_CATALOG,
+    PLAN_SYSTEM_RAM_BYTES,
+    PLAN_VRAM_HEADROOM_RATIO,
+    HardwareCatalogEntry,
 )
 from whichvlm.hardware.types import GPUInfo, HardwareInfo
 from whichvlm.models.types import GGUFVariant, ModelInfo
@@ -72,7 +71,7 @@ def plan_vram_by_quant(
     for quant in PLAN_QUANTS:
         if quant not in QUANT_BYTES_PER_WEIGHT:
             continue
-        vram_bytes = estimate_vram(
+        vram = estimate_vram_details(
             model, plan_variant_for_quant(model, quant), context_length, vision_workload
         )
         rows[quant] = {
@@ -131,7 +130,11 @@ def plan_binding_constraint(row: dict, min_speed: float | None) -> str:
 
 
 def gpu_backends(gpu: GPUInfo) -> list[str]:
-    return [capability.name for capability in gpu.backend_capabilities if capability.available]
+    return [
+        capability.name
+        for capability in gpu.backend_capabilities
+        if capability.available
+    ]
 
 
 def plan_metadata_warnings(gpu: GPUInfo) -> list[str]:
@@ -171,7 +174,9 @@ def plan_row_for_hardware(
     catalog_entry: HardwareCatalogEntry | None = None,
 ) -> dict:
     variant = plan_variant_for_quant(model, target_quant)
-    result = check_compatibility(model, variant, hardware, context_length, vision_workload)
+    result = check_compatibility(
+        model, variant, hardware, context_length, vision_workload
+    )
     fit_type = result.fit_type if result.can_run else "too_small"
     gpu = hardware.gpus[0]
     speed = None
@@ -198,7 +203,9 @@ def plan_row_for_hardware(
         "offload_ratio": result.offload_ratio,
         "uses_multi_gpu": result.uses_multi_gpu,
         "multi_gpu_effective_vram_bytes": result.multi_gpu_effective_vram_bytes,
-        "multi_gpu_support": multi_gpu_support_label(result.uses_multi_gpu, catalog_entry),
+        "multi_gpu_support": multi_gpu_support_label(
+            result.uses_multi_gpu, catalog_entry
+        ),
         "estimated_tok_per_sec": speed,
         "meets_speed": min_speed is None or (speed is not None and speed >= min_speed),
         "supported_backends": gpu_backends(gpu),
@@ -343,12 +350,19 @@ def plan_recommendations(
     multi_gpu_rows: list[dict],
 ) -> dict:
     full_gpu = first_runnable(single_gpu_rows, "full_gpu")
+    partial_offload_rows = [
+        row for row in single_gpu_rows if row["practical_partial_offload"]
+    ]
     show_multi_gpu = full_gpu is None or full_gpu["vram_gb"] >= 80
     return {
         "smallest_full_gpu": full_gpu,
-        "smallest_partial_offload": next(
-            (row for row in single_gpu_rows if row["practical_partial_offload"]),
-            None,
+        "smallest_partial_offload": min(
+            partial_offload_rows,
+            key=lambda row: (
+                row["price_usd"] if row["price_usd"] is not None else 10**9,
+                row["usable_vram_bytes"],
+            ),
+            default=None,
         ),
         "multi_gpu_alternatives": [
             row

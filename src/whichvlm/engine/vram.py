@@ -5,14 +5,19 @@ from typing import Literal
 
 from whichvlm.constants import FRAMEWORK_OVERHEAD_BYTES
 from whichvlm.engine.quantization import estimate_weight_bytes
-from whichvlm.engine.workload import VisionWorkload
+from whichvlm.engine.workload import Workload
 from whichvlm.models.types import GGUFVariant, ModelInfo
-
-# Memory model. Adds weights, cache, activations, and vision overhead.
 
 KV_BYTES_PER_BPARAM_PER_KCTX = 3.5 * 1024 * 1024
 MOE_ATTENTION_PARAM_MULTIPLIER = 4.0
 VramConfidence = Literal["high", "medium", "low"]
+VISUAL_PIPELINE_TAGS = {
+    "image-text-to-text",
+    "visual-question-answering",
+    "image-to-text",
+    "video-text-to-text",
+}
+AUDIO_PIPELINE_TAGS = {"audio-text-to-text", "automatic-speech-recognition"}
 
 
 @dataclass(frozen=True)
@@ -208,7 +213,7 @@ def calibration_match(
     model: ModelInfo,
     variant: GGUFVariant | None,
     context_length: int,
-    vision_workload: VisionWorkload | None,
+    vision_workload: Workload | None,
 ) -> VramCalibration | None:
     wl = vision_workload.normalized() if vision_workload else None
     image_count = wl.image_count if wl else 0
@@ -234,22 +239,23 @@ def calibration_match(
 
 def model_confidence(
     model: ModelInfo,
-    vision_workload: VisionWorkload | None,
+    vision_workload: Workload | None,
     calibration: VramCalibration | None,
 ) -> VramConfidence:
     if not has_kv_shape(model):
         return "low"
     if (
         vision_workload is not None
-        and is_vlm(model)
-        and component_params(model, {"vision_encoder", "projector"}) <= 0
+        and supports_visual_inputs(model)
+        and component_params(model, {"vision_encoder", "video_encoder", "projector"})
+        <= 0
     ):
         return "low"
     if not has_activation_shape(model):
         return "medium"
     if (
         vision_workload is not None
-        and is_vlm(model)
+        and supports_visual_inputs(model)
         and not (model.vision_layer_count and model.vision_hidden_size)
     ):
         return "medium"
@@ -272,20 +278,26 @@ def effective_params(model: ModelInfo) -> int:
     return model.parameter_count
 
 
-def is_vlm(model: ModelInfo) -> bool:
-    if model.hf_pipeline_tag in {
-        "image-text-to-text",
-        "visual-question-answering",
-        "image-to-text",
-    }:
+def supports_visual_inputs(model: ModelInfo) -> bool:
+    if model.capabilities.image or model.capabilities.video:
+        return True
+    if model.hf_pipeline_tag in VISUAL_PIPELINE_TAGS:
         return True
     return any(
-        component.role in {"vision_encoder", "projector", "processor"}
+        component.role in {"vision_encoder", "video_encoder", "projector", "processor"}
         for component in model.components
     )
 
 
-def image_tokens(model: ModelInfo, workload: VisionWorkload) -> int:
+def supports_audio_inputs(model: ModelInfo) -> bool:
+    if model.capabilities.audio:
+        return True
+    if model.hf_pipeline_tag in AUDIO_PIPELINE_TAGS:
+        return True
+    return any(component.role == "audio_encoder" for component in model.components)
+
+
+def image_tokens(model: ModelInfo, workload: Workload) -> int:
     patch_size = model.patch_size or 14
     grid_size = workload.image_size // patch_size
     if model.spatial_merge_size:
@@ -293,21 +305,23 @@ def image_tokens(model: ModelInfo, workload: VisionWorkload) -> int:
     tokens_per_image = max(1, grid_size**2)
     if model.image_token_strategy == "default":
         tokens_per_image = max(1, tokens_per_image - 1)
-    return tokens_per_image * workload.image_count
+    return tokens_per_image * (workload.image_count + workload.video_frames)
 
 
-def estimate_vision_overhead(model: ModelInfo, workload: VisionWorkload | None) -> int:
-    # Vision add-on. Prices encoder, projector, and image prefill cost.
+def estimate_vision_overhead(model: ModelInfo, workload: Workload | None) -> int:
     if workload is None:
         return 0
     wl = workload.normalized()
-    if wl.image_count == 0:
+    visual_inputs = wl.image_count + wl.video_frames
+    if visual_inputs == 0:
         return 0
-    if not is_vlm(model):
+    if not supports_visual_inputs(model):
         return 0
 
     effective_p = effective_params(model)
-    vision_params = component_params(model, {"vision_encoder", "projector"})
+    vision_params = component_params(
+        model, {"vision_encoder", "video_encoder", "projector"}
+    )
     if vision_params <= 0:
         vision_params = int(
             min(max(model.parameter_count * 0.18, 300_000_000), 4_000_000_000)
@@ -337,14 +351,25 @@ def estimate_vision_overhead(model: ModelInfo, workload: VisionWorkload | None) 
         )
     else:
         prefill = int(
-            (192 * 1024**2 + effective_p * 0.008) * image_scale * wl.image_count
+            (192 * 1024**2 + effective_p * 0.008) * image_scale * visual_inputs
         )
-    return vision_weights + projector_scratch + image_token_scratch + prefill
+    return (
+        vision_weights + projector_scratch + image_token_scratch + prefill
+    ) * wl.batch_size
+
+
+def estimate_audio_overhead(model: ModelInfo, workload: Workload | None) -> int:
+    if workload is None:
+        return 0
+    wl = workload.normalized()
+    if wl.audio_seconds <= 0 or not supports_audio_inputs(model):
+        return 0
+    return int((64 * 1024**2 + wl.audio_seconds * 2 * 1024**2) * wl.batch_size)
 
 
 def vram_notes(
     model: ModelInfo,
-    vision_workload: VisionWorkload | None,
+    vision_workload: Workload | None,
     calibration: VramCalibration | None,
 ) -> list[str]:
     notes = []
@@ -352,8 +377,11 @@ def vram_notes(
         notes.append("KV cache uses parameter-count fallback")
     if not has_activation_shape(model):
         notes.append("activations use parameter-count fallback")
-    if is_vlm(model) and vision_workload is not None:
-        if component_params(model, {"vision_encoder", "projector"}) <= 0:
+    if supports_visual_inputs(model) and vision_workload is not None:
+        if (
+            component_params(model, {"vision_encoder", "video_encoder", "projector"})
+            <= 0
+        ):
             notes.append("vision parameters use VLM size fallback")
         if not (model.vision_layer_count and model.vision_hidden_size):
             notes.append("vision activations use image-size fallback")
@@ -372,15 +400,20 @@ def estimate_vram_details(
     model: ModelInfo,
     variant: GGUFVariant | None,
     context_length: int = 4096,
-    vision_workload: VisionWorkload | None = None,
+    vision_workload: Workload | None = None,
     batch_size: int = 1,
 ) -> VramEstimate:
+    workload = vision_workload.normalized() if vision_workload else None
+    effective_context = workload.context_length if workload else context_length
+    effective_batch = workload.batch_size if workload else batch_size
     weights = estimate_weight_bytes(model, variant)
-    kv_cache = estimate_kv_cache(model, context_length, batch_size)
-    activation = activation_bytes(model, context_length, batch_size)
-    vision = estimate_vision_overhead(model, vision_workload)
-    subtotal = weights + kv_cache + activation + vision
-    calibration = calibration_match(model, variant, context_length, vision_workload)
+    kv_cache = estimate_kv_cache(model, effective_context, effective_batch)
+    activation = activation_bytes(model, effective_context, effective_batch)
+    media = estimate_vision_overhead(model, workload) + estimate_audio_overhead(
+        model, workload
+    )
+    subtotal = weights + kv_cache + activation + media
+    calibration = calibration_match(model, variant, effective_context, workload)
     required = apply_calibration(subtotal + FRAMEWORK_OVERHEAD_BYTES, calibration)
     runtime = required - subtotal
     notes = vram_notes(model, vision_workload, calibration)
@@ -395,7 +428,7 @@ def estimate_vram_details(
             weights=weights,
             kv_cache=kv_cache,
             activations=activation,
-            vision=vision,
+            vision=media,
             runtime_overhead=runtime,
         ),
         notes=notes,
@@ -406,7 +439,7 @@ def estimate_vram(
     model: ModelInfo,
     variant: GGUFVariant | None,
     context_length: int = 4096,
-    vision_workload: VisionWorkload | None = None,
+    vision_workload: Workload | None = None,
     batch_size: int = 1,
 ) -> int:
     return estimate_vram_details(
