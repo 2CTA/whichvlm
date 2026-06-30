@@ -40,6 +40,19 @@ class ModelLineage:
 
 
 @dataclass
+class ModelCapabilities:
+    image: bool = False
+    video: bool = False
+    audio: bool = False
+    ocr: bool = False
+    document: bool = False
+    chart: bool = False
+    multi_image: bool = False
+    tool_use: bool = False
+    supported_languages: list[str] = field(default_factory=list)
+
+
+@dataclass
 class ModelInfo:
     id: str
     family_id: str
@@ -84,6 +97,7 @@ class ModelInfo:
     artifacts: list[ModelArtifact] = field(default_factory=list)
     components: list[ModelComponent] = field(default_factory=list)
     lineage: ModelLineage = field(default_factory=ModelLineage)
+    capabilities: ModelCapabilities = field(default_factory=ModelCapabilities)
 
     def __post_init__(self) -> None:
         if self.base_model and not self.base_models:

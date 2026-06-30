@@ -1,3 +1,4 @@
+import inspect
 import json
 from io import StringIO
 
@@ -28,7 +29,7 @@ from whichvlm.cli import (
     select_gguf_variant,
     validate_evidence,
     validate_freshness_weight,
-    vision_workload_for_profile,
+    workload_for_profile,
     app,
 )
 from whichvlm.runtime import generate_run_script
@@ -138,22 +139,30 @@ def test_include_vision_candidates_by_profile():
     assert include_vision_candidates("coding") is False
 
 
-def test_vision_workload_for_profile_defaults_and_overrides():
-    wl = vision_workload_for_profile("vision", context_length=8192)
+def test_workload_for_profile_defaults_and_overrides():
+    wl = workload_for_profile("vision", context_length=8192)
     assert wl is not None
     assert wl.image_count == 1
     assert wl.image_size == 448
     assert wl.context_length == 8192
-    assert vision_workload_for_profile("ocr") is not None
+    assert workload_for_profile("ocr") is not None
 
-    custom = vision_workload_for_profile(
+    custom = workload_for_profile(
         "any", image_count=2, image_size=896, context_length=2048
     )
     assert custom is not None
     assert custom.image_count == 2
     assert custom.image_size == 896
     assert custom.context_length == 2048
-    assert vision_workload_for_profile("general") is None
+    assert workload_for_profile("general") is None
+
+
+def test_upgrade_exposes_workload_options():
+    params = inspect.signature(cli_mod.upgrade).parameters
+
+    assert "video_frames" in params
+    assert "audio_seconds" in params
+    assert "batch_size" in params
 
 
 def test_fill_missing_published_at_updates_models():
@@ -289,7 +298,6 @@ def test_merge_model_eval_benchmarks_is_now_a_noop():
 
     assert injected == 0
     assert merged is original or merged == original
-
 
     assert "meta-llama/Llama-3.1-8B-Instruct" not in merged
 
@@ -658,7 +666,9 @@ def test_hardware_command_smoke(monkeypatch):
     monkeypatch.setattr(
         "whichvlm.hardware.detector.detect_hardware", lambda: hw_with_gpu(8)
     )
-    monkeypatch.setattr("whichvlm.output.display.display_hardware", fake_display_hardware)
+    monkeypatch.setattr(
+        "whichvlm.output.display.display_hardware", fake_display_hardware
+    )
 
     result = CliRunner().invoke(app, ["hardware"])
 
@@ -676,7 +686,9 @@ def test_hardware_command_simulated_apple_silicon(monkeypatch):
         "whichvlm.hardware.detector.detect_hardware",
         lambda: HardwareInfo(gpus=[], ram_bytes=16 * 1024**3, os="darwin"),
     )
-    monkeypatch.setattr("whichvlm.output.display.display_hardware", fake_display_hardware)
+    monkeypatch.setattr(
+        "whichvlm.output.display.display_hardware", fake_display_hardware
+    )
 
     result = CliRunner().invoke(app, ["hardware", "--gpu", "Apple M3 Max"])
 
@@ -793,7 +805,15 @@ def test_hardware_plan_scores_target_gpu(monkeypatch):
 
     result = CliRunner().invoke(
         app,
-        ["hardware-plan", "RTX 4070", "--json", "--top", "1", "--context-length", "4096"],
+        [
+            "hardware-plan",
+            "RTX 4070",
+            "--json",
+            "--top",
+            "1",
+            "--context-length",
+            "4096",
+        ],
     )
 
     assert result.exit_code == 0
@@ -1083,7 +1103,42 @@ def test_transformers_chat_script_provides_disk_offload_folder():
 
     assert 'tempfile.mkdtemp(prefix="whichvlm_transformers_offload_")' in script
     assert "offload_folder=offload_folder" in script
+    assert "except NameError:" not in script
     assert "shutil.rmtree(offload_folder, ignore_errors=True)" in script
+
+
+def test_run_explicit_transformers_does_not_select_gguf(monkeypatch):
+    model = make_model(
+        model_id="org/Test-7B",
+        gguf_variants=[
+            GGUFVariant(
+                filename="test-q4.gguf",
+                quant_type="Q4_K_M",
+                file_size_bytes=4_000_000_000,
+            )
+        ],
+    )
+    captured: dict[str, object] = {}
+
+    def fake_run_request(request, backend_name=None):
+        captured["artifact"] = request.artifact
+        captured["backend_name"] = backend_name
+        return 0
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/uv")
+    monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [model])
+    monkeypatch.setattr(
+        "whichvlm.hardware.detector.detect_hardware", lambda: hw_with_gpu(8)
+    )
+    monkeypatch.setattr(cli_mod, "run_request", fake_run_request)
+
+    result = CliRunner().invoke(
+        app, ["run", "org/Test-7B", "--backend", "transformers"]
+    )
+
+    assert result.exit_code == 0
+    assert captured["artifact"] is None
+    assert captured["backend_name"] == "transformers"
 
 
 def test_run_auto_pick_resolves_ranked_gguf_before_launch(monkeypatch):
@@ -1129,17 +1184,17 @@ def test_run_auto_pick_resolves_ranked_gguf_before_launch(monkeypatch):
             )
         ]
 
-    def fake_generate_run_script(model, variant, context_length, cpu_only):
-        captured["model_id"] = model.id
-        captured["variant"] = variant
-        return "print('ok')"
-
-    class Completed:
-        returncode = 0
-
-    def fake_run(cmd):
-        captured["cmd"] = cmd
-        return Completed()
+    def fake_run_request(request, backend_name=None):
+        captured["model_id"] = request.model.id
+        captured["variant"] = request.artifact
+        deps, _ = cli_mod.resolve_model_deps(
+            request.model,
+            request.artifact,
+            backend_name,
+            request.hardware,
+        )
+        captured["cmd"] = deps
+        return 0
 
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/uv")
     monkeypatch.setattr(
@@ -1150,8 +1205,7 @@ def test_run_auto_pick_resolves_ranked_gguf_before_launch(monkeypatch):
     )
     monkeypatch.setattr("whichvlm.models.benchmark.load_benchmark_cache", lambda: {})
     monkeypatch.setattr("whichvlm.engine.ranker.rank_models", fake_rank_models)
-    monkeypatch.setattr(cli_mod, "generate_run_script", fake_generate_run_script)
-    monkeypatch.setattr("subprocess.run", fake_run)
+    monkeypatch.setattr(cli_mod, "run_request", fake_run_request)
 
     result = CliRunner().invoke(app, ["run", "--quant", "Q4_K_M"])
 
@@ -1179,6 +1233,45 @@ def test_run_vlm_requires_image(monkeypatch):
 
     assert result.exit_code == 1
     assert "VLM models require --image PATH" in result.stdout
+
+
+def test_serve_gguf_model_uses_server_request(monkeypatch):
+    model = make_model(
+        model_id="org/Test-7B-GGUF",
+        gguf_variants=[
+            GGUFVariant(
+                filename="test-q4.gguf",
+                quant_type="Q4_K_M",
+                file_size_bytes=4_000_000_000,
+            )
+        ],
+    )
+    captured: dict[str, object] = {}
+
+    def fake_serve_request(request, backend_name=None):
+        captured["artifact"] = request.artifact
+        captured["backend_name"] = backend_name
+        captured["host"] = request.host
+        captured["port"] = request.port
+        return 0
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/uv")
+    monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [model])
+    monkeypatch.setattr(
+        "whichvlm.hardware.detector.detect_hardware", lambda: hw_with_gpu(8)
+    )
+    monkeypatch.setattr(cli_mod, "serve_request", fake_serve_request)
+
+    result = CliRunner().invoke(
+        app,
+        ["serve", "org/Test-7B-GGUF", "--host", "0.0.0.0", "--port", "9000"],
+    )
+
+    assert result.exit_code == 0
+    assert captured["artifact"].filename == "test-q4.gguf"
+    assert captured["backend_name"] == "llama.cpp"
+    assert captured["host"] == "0.0.0.0"
+    assert captured["port"] == 9000
 
 
 def test_snippet_no_model_found(monkeypatch):
