@@ -1080,7 +1080,42 @@ def test_transformers_chat_script_provides_disk_offload_folder():
 
     assert 'tempfile.mkdtemp(prefix="whichvlm_transformers_offload_")' in script
     assert "offload_folder=offload_folder" in script
+    assert "except NameError:" not in script
     assert "shutil.rmtree(offload_folder, ignore_errors=True)" in script
+
+
+def test_run_explicit_transformers_does_not_select_gguf(monkeypatch):
+    model = make_model(
+        model_id="org/Test-7B",
+        gguf_variants=[
+            GGUFVariant(
+                filename="test-q4.gguf",
+                quant_type="Q4_K_M",
+                file_size_bytes=4_000_000_000,
+            )
+        ],
+    )
+    captured: dict[str, object] = {}
+
+    def fake_run_request(request, backend_name=None):
+        captured["artifact"] = request.artifact
+        captured["backend_name"] = backend_name
+        return 0
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/uv")
+    monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [model])
+    monkeypatch.setattr(
+        "whichvlm.hardware.detector.detect_hardware", lambda: hw_with_gpu(8)
+    )
+    monkeypatch.setattr(cli_mod, "run_request", fake_run_request)
+
+    result = CliRunner().invoke(
+        app, ["run", "org/Test-7B", "--backend", "transformers"]
+    )
+
+    assert result.exit_code == 0
+    assert captured["artifact"] is None
+    assert captured["backend_name"] == "transformers"
 
 
 def test_run_auto_pick_resolves_ranked_gguf_before_launch(monkeypatch):
@@ -1126,17 +1161,17 @@ def test_run_auto_pick_resolves_ranked_gguf_before_launch(monkeypatch):
             )
         ]
 
-    def fake_generate_run_script(model, variant, context_length, cpu_only):
-        captured["model_id"] = model.id
-        captured["variant"] = variant
-        return "print('ok')"
-
-    class Completed:
-        returncode = 0
-
-    def fake_run(cmd):
-        captured["cmd"] = cmd
-        return Completed()
+    def fake_run_request(request, backend_name=None):
+        captured["model_id"] = request.model.id
+        captured["variant"] = request.artifact
+        deps, _ = cli_mod.resolve_model_deps(
+            request.model,
+            request.artifact,
+            backend_name,
+            request.hardware,
+        )
+        captured["cmd"] = deps
+        return 0
 
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/uv")
     monkeypatch.setattr(
@@ -1147,8 +1182,7 @@ def test_run_auto_pick_resolves_ranked_gguf_before_launch(monkeypatch):
     )
     monkeypatch.setattr("whichvlm.models.benchmark.load_benchmark_cache", lambda: {})
     monkeypatch.setattr("whichvlm.engine.ranker.rank_models", fake_rank_models)
-    monkeypatch.setattr(cli_mod, "generate_run_script", fake_generate_run_script)
-    monkeypatch.setattr("subprocess.run", fake_run)
+    monkeypatch.setattr(cli_mod, "run_request", fake_run_request)
 
     result = CliRunner().invoke(app, ["run", "--quant", "Q4_K_M"])
 
@@ -1176,6 +1210,45 @@ def test_run_vlm_requires_image(monkeypatch):
 
     assert result.exit_code == 1
     assert "VLM models require --image PATH" in result.stdout
+
+
+def test_serve_gguf_model_uses_server_request(monkeypatch):
+    model = make_model(
+        model_id="org/Test-7B-GGUF",
+        gguf_variants=[
+            GGUFVariant(
+                filename="test-q4.gguf",
+                quant_type="Q4_K_M",
+                file_size_bytes=4_000_000_000,
+            )
+        ],
+    )
+    captured: dict[str, object] = {}
+
+    def fake_serve_request(request, backend_name=None):
+        captured["artifact"] = request.artifact
+        captured["backend_name"] = backend_name
+        captured["host"] = request.host
+        captured["port"] = request.port
+        return 0
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/uv")
+    monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [model])
+    monkeypatch.setattr(
+        "whichvlm.hardware.detector.detect_hardware", lambda: hw_with_gpu(8)
+    )
+    monkeypatch.setattr(cli_mod, "serve_request", fake_serve_request)
+
+    result = CliRunner().invoke(
+        app,
+        ["serve", "org/Test-7B-GGUF", "--host", "0.0.0.0", "--port", "9000"],
+    )
+
+    assert result.exit_code == 0
+    assert captured["artifact"].filename == "test-q4.gguf"
+    assert captured["backend_name"] == "llama.cpp"
+    assert captured["host"] == "0.0.0.0"
+    assert captured["port"] == 9000
 
 
 def test_snippet_no_model_found(monkeypatch):

@@ -350,12 +350,19 @@ def plan_recommendations(
     multi_gpu_rows: list[dict],
 ) -> dict:
     full_gpu = first_runnable(single_gpu_rows, "full_gpu")
+    partial_offload_rows = [
+        row for row in single_gpu_rows if row["practical_partial_offload"]
+    ]
     show_multi_gpu = full_gpu is None or full_gpu["vram_gb"] >= 80
     return {
         "smallest_full_gpu": full_gpu,
-        "smallest_partial_offload": next(
-            (row for row in single_gpu_rows if row["practical_partial_offload"]),
-            None,
+        "smallest_partial_offload": min(
+            partial_offload_rows,
+            key=lambda row: (
+                row["price_usd"] if row["price_usd"] is not None else 10**9,
+                row["usable_vram_bytes"],
+            ),
+            default=None,
         ),
         "multi_gpu_alternatives": [
             row
