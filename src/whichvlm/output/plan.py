@@ -72,7 +72,7 @@ def plan_vram_by_quant(
     for quant in PLAN_QUANTS:
         if quant not in QUANT_BYTES_PER_WEIGHT:
             continue
-        vram_bytes = estimate_vram(
+        vram = estimate_vram_details(
             model, plan_variant_for_quant(model, quant), context_length, vision_workload
         )
         rows[quant] = {
