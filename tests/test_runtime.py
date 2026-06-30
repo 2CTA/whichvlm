@@ -42,9 +42,103 @@ def test_transformers_vlm_script_uses_processor_and_image_path():
     assert "pillow" in deps
     assert script_type == "transformers_vlm"
     assert "AutoProcessor" in script
-    assert "AutoModelForImageTextToText" in script
+    assert "Qwen2_5_VLForConditionalGeneration" in script
     assert "image_path = '/tmp/image.png'" in script
     assert '{"type": "image", "image": image}' in script
+    assert "min_pixels=256 * 28 * 28" in script
+    assert "max_pixels=1280 * 28 * 28" in script
+    assert "TextIteratorStreamer" in script
+    assert "torch.inference_mode()" in script
+    assert "[metrics] ttft=" in script
+
+
+def test_transformers_quantized_script_uses_bitsandbytes_loader():
+    model = ModelInfo(
+        id="org/Test-7B-BNB-4bit",
+        family_id="test-7b",
+        name="Test-7B-BNB-4bit",
+        parameter_count=7_000_000_000,
+    )
+
+    deps, script_type = resolve_model_deps(model, None)
+    script = generate_run_script(model, None, 4096, False)
+
+    assert script_type == "transformers"
+    assert "bitsandbytes" in deps
+    assert "BitsAndBytesConfig" in script
+    assert 'model_kwargs["quantization_config"]' in script
+    assert "attn_implementation=\"sdpa\"" in script
+    assert "max_memory=cuda_memory_limits()" in script
+
+
+def test_generated_scripts_compile():
+    gguf_variant = GGUFVariant(
+        filename="test-q4.gguf",
+        quant_type="Q4_K_M",
+        file_size_bytes=4_000_000_000,
+    )
+    text_model = ModelInfo(
+        id="org/Test-7B",
+        family_id="test-7b",
+        name="Test-7B",
+        parameter_count=7_000_000_000,
+    )
+    gguf_model = ModelInfo(
+        id="org/Test-7B-GGUF",
+        family_id="test-7b",
+        name="Test-7B-GGUF",
+        parameter_count=7_000_000_000,
+        gguf_variants=[gguf_variant],
+        model_format="gguf",
+    )
+    gguf_vlm = vlm_model(
+        gguf_variants=[gguf_variant],
+        model_format="gguf",
+        artifacts=[
+            ModelArtifact(
+                repo_id="org/Test-VL-7B",
+                format="adapter",
+                filename="mmproj-test-f16.gguf",
+                source_kind="mmproj",
+            ),
+        ],
+    )
+    mlx_vlm = vlm_model(model_format="mlx")
+    scripts = [
+        generate_run_script(text_model, None, 4096, False),
+        generate_run_script(vlm_model(), None, 4096, False, image_path="/tmp/image.png"),
+        generate_run_script(gguf_model, gguf_variant, 4096, False),
+        generate_run_script(gguf_vlm, gguf_variant, 4096, False, image_path="/tmp/image.png"),
+        generate_run_script(
+            mlx_vlm,
+            None,
+            4096,
+            False,
+            image_path="/tmp/image.png",
+            hardware=darwin_mlx_hardware(),
+        ),
+        generate_run_script(
+            vlm_model(),
+            None,
+            4096,
+            False,
+            image_path="/tmp/image.png",
+            backend_name="vllm",
+            hardware=linux_cuda_hardware(),
+        ),
+        generate_run_script(
+            vlm_model(),
+            None,
+            4096,
+            False,
+            image_path="/tmp/image.png",
+            backend_name="sglang",
+            hardware=linux_cuda_hardware(),
+        ),
+    ]
+
+    for script in scripts:
+        compile(script, "<whichvlm-generated>", "exec")
 
 
 def test_unknown_transformers_vlm_is_not_claimed_supported():
@@ -188,7 +282,7 @@ def linux_cuda_hardware() -> HardwareInfo:
 
 
 def test_vllm_vlm_backend_requires_explicit_linux_cuda_support():
-    model = vlm_model()
+    model = vlm_model(quantization_type="AWQ")
 
     deps, script_type = resolve_model_deps(
         model,
@@ -206,11 +300,14 @@ def test_vllm_vlm_backend_requires_explicit_linux_cuda_support():
         hardware=linux_cuda_hardware(),
     )
 
-    assert deps == ["vllm"]
+    assert deps == ["vllm", "psutil"]
     assert script_type == "vllm"
     assert "from vllm import LLM, SamplingParams" in script
     assert "llm.chat" in script
     assert "image_data_url" in script
+    assert "quantization = 'awq'" in script
+    assert "gpu_memory_utilization=0.90" in script
+    assert "[metrics] ttft=" in script
 
 
 def test_sglang_vlm_backend_uses_offline_engine():
@@ -232,10 +329,11 @@ def test_sglang_vlm_backend_uses_offline_engine():
         hardware=linux_cuda_hardware(),
     )
 
-    assert deps == ["sglang"]
+    assert deps == ["sglang", "psutil"]
     assert script_type == "sglang"
     assert "from sglang import Engine" in script
     assert "engine.generate" in script
+    assert "stream=True" in script
     assert "image_data=image_path" in script
 
 
