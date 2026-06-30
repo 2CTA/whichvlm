@@ -27,7 +27,7 @@ from whichvlm.output import console
 from whichvlm.output.formatting import format_bytes, format_params
 
 PLAN_QUANTS = ("Q2_K", "Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0", "F16")
-PRACTICAL_PARTIAL_MAX_OFFLOAD_RATIO = 0.65
+PRACTICAL_PARTIAL_MAX_OFFLOAD_RATIO = 0.50
 PRACTICAL_PARTIAL_MIN_USABLE_VRAM_BYTES = 6 * BYTES_PER_GIB
 PRACTICAL_PARTIAL_MIN_TOK_PER_SEC = 2.0
 MULTI_GPU_SPEED_FACTOR = 0.70
@@ -72,7 +72,7 @@ def plan_vram_by_quant(
     for quant in PLAN_QUANTS:
         if quant not in QUANT_BYTES_PER_WEIGHT:
             continue
-        vram_bytes = estimate_vram(
+        vram = estimate_vram_details(
             model, plan_variant_for_quant(model, quant), context_length, vision_workload
         )
         rows[quant] = {
