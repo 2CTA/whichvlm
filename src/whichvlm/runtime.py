@@ -54,10 +54,17 @@ class CompatibilityRule:
 TRANSFORMERS_VLM_FAMILIES = frozenset(
     {
         "qwen-vl",
+        "qwen2vl",
+        "qwen3vl",
         "gemma-multimodal",
+        "paligemma",
         "llama-vision",
+        "mllama",
         "pixtral",
         "phi-vision",
+        "phi3v",
+        "phi3_v",
+        "deepseek_vl",
         "llava",
     }
 )
@@ -239,8 +246,10 @@ def matrix_supports(
 
 
 def is_vlm_model(model: ModelInfo) -> bool:
-    # VLM check. Detects image-capable models from tags and components.
-    if is_vision_model(model.id, model.hf_pipeline_tag, model.tags):
+    # VLM check. Detects image-capable models from HF metadata and components.
+    if is_vision_model(
+        model.id, model.hf_pipeline_tag, model.tags, model.architecture
+    ):
         return True
     return any(
         component.role in {"vision_encoder", "projector", "processor"}

@@ -6,6 +6,7 @@ from typing import Literal
 from whichvlm.constants import FRAMEWORK_OVERHEAD_BYTES
 from whichvlm.engine.quantization import estimate_weight_bytes
 from whichvlm.engine.workload import Workload
+from whichvlm.models.package_graph import is_vision_model
 from whichvlm.models.types import GGUFVariant, ModelInfo
 
 KV_BYTES_PER_BPARAM_PER_KCTX = 3.5 * 1024 * 1024
@@ -280,6 +281,10 @@ def effective_params(model: ModelInfo) -> int:
 
 def supports_visual_inputs(model: ModelInfo) -> bool:
     if model.capabilities.image or model.capabilities.video:
+        return True
+    if is_vision_model(
+        model.id, model.hf_pipeline_tag, model.tags, model.architecture
+    ):
         return True
     if model.hf_pipeline_tag in VISUAL_PIPELINE_TAGS:
         return True

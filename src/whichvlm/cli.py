@@ -263,6 +263,7 @@ def apply_memory_budgets(
     hardware: HardwareInfo,
     *,
     vram_headroom: str,
+    perf_vram: str = "none",
     ram_budget: str | None,
 ) -> HardwareInfo:
     # Budget pass. Writes usable memory limits onto detected hardware.
@@ -273,13 +274,30 @@ def apply_memory_budgets(
             option_name="--vram-headroom",
             total_bytes=BYTES_PER_GIB,
         )
+    perf_mode = perf_vram.strip().lower()
+    if not hardware.gpus and perf_mode not in {"none", "off", "0"}:
+        parse_memory_amount(
+            perf_vram,
+            option_name="--perf-vram",
+            total_bytes=BYTES_PER_GIB,
+        )
 
     reserved_values: list[int] = []
+    perf_reserved_values: list[int] = []
     for gpu in hardware.gpus:
         reserved = parse_vram_headroom(vram_headroom, gpu.vram_bytes)
-        gpu.usable_vram_bytes = max(0, gpu.vram_bytes - reserved)
+        perf_reserved = 0
+        if perf_mode not in {"none", "off", "0"}:
+            perf_reserved = parse_memory_amount(
+                perf_vram,
+                option_name="--perf-vram",
+                total_bytes=gpu.vram_bytes,
+            )
+        gpu.usable_vram_bytes = max(0, gpu.vram_bytes - reserved - perf_reserved)
         if reserved > 0:
             reserved_values.append(reserved)
+        if perf_reserved > 0:
+            perf_reserved_values.append(perf_reserved)
 
     if reserved_values:
         unique_reserved = sorted(set(reserved_values))
@@ -287,6 +305,16 @@ def apply_memory_budgets(
             note = f"VRAM headroom: {format_budget_bytes(unique_reserved[0])} reserved per GPU"
         else:
             note = "VRAM headroom: auto reserve applied per GPU"
+        hardware.budget_notes.append(note)
+    if perf_reserved_values:
+        unique_reserved = sorted(set(perf_reserved_values))
+        if len(unique_reserved) == 1:
+            note = (
+                "Performance VRAM: "
+                f"{format_budget_bytes(unique_reserved[0])} reserved per GPU"
+            )
+        else:
+            note = "Performance VRAM: reserve applied per GPU"
         hardware.budget_notes.append(note)
 
     if ram_budget:
@@ -572,6 +600,11 @@ def main(
         "--vram-headroom",
         help="Reserve GPU memory for the OS/runtime: auto | none | 1GB | 10%",
     ),
+    perf_vram: str = typer.Option(
+        "none",
+        "--perf-vram",
+        help="Reserve GPU memory for inference performance features: none | 1GB | 10%",
+    ),
     ram_budget: Optional[str] = typer.Option(
         None,
         "--ram-budget",
@@ -616,7 +649,10 @@ def main(
         hardware = detect_hardware()
         apply_gpu_overrides(hardware, cpu_only, gpu, vram)
         apply_memory_budgets(
-            hardware, vram_headroom=vram_headroom, ram_budget=ram_budget
+            hardware,
+            vram_headroom=vram_headroom,
+            perf_vram=perf_vram,
+            ram_budget=ram_budget,
         )
         progress.update(task, description="hardware mapped")
 

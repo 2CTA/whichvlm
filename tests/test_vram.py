@@ -282,6 +282,15 @@ def test_vision_workload_increases_vram_predictably():
     assert two_large_images > one_image
 
 
+def test_vision_architecture_without_pipeline_tag_increases_vram():
+    model = make_model(3_000_000_000, architecture="paligemma")
+    workload = VisionWorkload(image_count=1, image_size=448)
+
+    assert estimate_vram(model, None, vision_workload=workload) > estimate_vram(
+        model, None
+    )
+
+
 def test_vision_workload_does_not_change_text_model_vram():
     model = make_model(7_000_000_000)
     variant = GGUFVariant(
