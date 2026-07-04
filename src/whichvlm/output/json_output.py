@@ -11,6 +11,7 @@ from whichvlm.models.types import (
     ModelInfo,
     ModelLineage,
 )
+from whichvlm.models.package_graph import capabilities_to_dict
 from whichvlm.output import console
 from whichvlm.output.upgrade import summarize_upgrade_row
 
@@ -148,6 +149,7 @@ def model_dict(rank: int, result: CompatibilityResult, details: bool = False) ->
                 "architecture": model.architecture,
                 "hf_pipeline_tag": model.hf_pipeline_tag,
                 "tags": model.tags,
+                "capabilities": capabilities_to_dict(model.capabilities),
                 "access": model.access,
                 "is_official": model.is_official,
                 "model_format": model.model_format,

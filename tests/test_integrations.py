@@ -1,0 +1,148 @@
+import pytest
+
+from whichvlm.engine.ranker import rank_models
+from whichvlm.engine.vram import estimate_vram
+from whichvlm.engine.workload import Workload
+from whichvlm.hardware.types import BackendCapability, GPUInfo, HardwareInfo
+from whichvlm.models.fetcher import parse_model
+from whichvlm.models.integrations import (
+    INTEGRATION_PROFILES,
+    capabilities_for_data,
+    integration_ids_for_capabilities,
+    runtime_backends_for_capabilities,
+)
+from whichvlm.runtime import generate_run_script, resolve_model_deps
+
+
+def linux_cuda_hardware() -> HardwareInfo:
+    return HardwareInfo(
+        os="linux",
+        gpus=[
+            GPUInfo(
+                name="NVIDIA Test GPU",
+                vendor="nvidia",
+                vram_bytes=24 * 1024**3,
+                compute_capability=(8, 9),
+                backend_capabilities=[BackendCapability("cuda", True)],
+            )
+        ],
+        ram_bytes=64 * 1024**3,
+    )
+
+
+def test_registered_profiles_define_complete_contract():
+    for profile in INTEGRATION_PROFILES:
+        assert profile.integration_id
+        assert profile.capability_names
+        assert profile.pipeline_tags or profile.tag_patterns
+        assert profile.component_roles
+        assert profile.workload_tasks
+        assert profile.runtime_backends
+
+
+def test_plain_image_to_text_is_not_document_ocr():
+    capabilities = capabilities_for_data(
+        "org/Captioner-7B",
+        "image-to-text",
+        ["safetensors"],
+    )
+
+    assert capabilities.image is True
+    assert capabilities.ocr is False
+    assert capabilities.document is False
+
+
+@pytest.mark.parametrize(
+    ("integration_id", "model_data", "workload"),
+    [
+        (
+            "vision-language",
+            {
+                "id": "Qwen/Qwen2.5-VL-7B-Instruct",
+                "pipeline_tag": "image-text-to-text",
+                "tags": ["vision-language", "safetensors"],
+                "config": {"architectures": ["Qwen2VLForConditionalGeneration"]},
+                "safetensors": {"total": 7_000_000_000},
+                "siblings": [],
+                "cardData": {},
+            },
+            Workload(task="image_qa", context_length=4096, image_count=1),
+        ),
+        (
+            "document-ocr",
+            {
+                "id": "org/DocVQA-OCR-7B",
+                "pipeline_tag": "image-to-text",
+                "tags": ["document", "ocr", "safetensors"],
+                "config": {"architectures": ["Qwen2VLForConditionalGeneration"]},
+                "safetensors": {"total": 7_000_000_000},
+                "siblings": [],
+                "cardData": {},
+                "evalResults": [
+                    {
+                        "filename": ".eval_results/docvqa.yaml",
+                        "data": {
+                            "dataset": {"id": "DocVQA"},
+                            "value": 80.0,
+                        },
+                    }
+                ],
+            },
+            Workload(task="ocr", context_length=4096, image_count=1),
+        ),
+    ],
+)
+def test_registered_integration_has_complete_path(
+    integration_id: str,
+    model_data: dict,
+    workload: Workload,
+):
+    model = parse_model(model_data)
+    assert model is not None
+    assert integration_id in integration_ids_for_capabilities(model.capabilities)
+    assert model.artifacts
+    assert model.components
+
+    text_vram = estimate_vram(model, None, context_length=workload.context_length)
+    media_vram = estimate_vram(
+        model,
+        None,
+        context_length=workload.context_length,
+        vision_workload=workload,
+    )
+    assert media_vram > text_vram
+
+    results = rank_models(
+        [model],
+        linux_cuda_hardware(),
+        top_n=1,
+        task_profile=workload.task,
+        workload=workload,
+        benchmark_scores={model.id: 70.0},
+    )
+    assert results
+    assert results[0].model.id == model.id
+
+    backends = runtime_backends_for_capabilities(model.capabilities)
+    assert "transformers" in backends
+    deps, script_type = resolve_model_deps(
+        model,
+        None,
+        backend_name="transformers",
+        hardware=linux_cuda_hardware(),
+    )
+    script = generate_run_script(
+        model,
+        None,
+        workload.context_length,
+        False,
+        image_path="/tmp/image.png",
+        backend_name="transformers",
+        hardware=linux_cuda_hardware(),
+    )
+
+    assert "pillow" in deps
+    assert script_type == "transformers_vlm"
+    assert "AutoProcessor" in script
+    assert "TextIteratorStreamer" in script
+    assert "image_path = '/tmp/image.png'" in script

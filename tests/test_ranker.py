@@ -411,14 +411,31 @@ def test_general_profile_excludes_specialized_models():
             ),
         ],
     )
+    ocr_model = ModelInfo(
+        id="org/DocVQA-OCR-7B",
+        family_id="docvqa-ocr-7b",
+        name="DocVQA-OCR-7B",
+        parameter_count=7_000_000_000,
+        downloads=1000,
+        likes=100,
+        capabilities=ModelCapabilities(image=True, ocr=True),
+        gguf_variants=[
+            GGUFVariant(
+                filename="c-Q4_K_M.gguf",
+                quant_type="Q4_K_M",
+                file_size_bytes=4_000_000_000,
+            ),
+        ],
+    )
     hw = make_hardware()
     results = rank_models(
-        [general_model, coding_model],
+        [general_model, coding_model, ocr_model],
         hw,
         top_n=10,
         benchmark_scores={
             "Qwen/Qwen2.5-7B-Instruct": 70.0,
             "Qwen/Qwen2.5-Coder-7B-Instruct": 75.0,
+            "org/DocVQA-OCR-7B": 80.0,
         },
         task_profile="general",
     )

@@ -18,7 +18,15 @@ VLM_FAMILY_SEEDS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
             "Qwen/Qwen3-VL-32B-Instruct",
             "Qwen/Qwen3-VL-235B-A22B-Instruct",
         ),
-        "aliases": ("qwen-vl", "qwen2-vl", "qwen2.5-vl", "qwen3-vl"),
+        "aliases": (
+            "qwen-vl",
+            "qwen2-vl",
+            "qwen2vl",
+            "qwen2.5-vl",
+            "qwen25vl",
+            "qwen3-vl",
+            "qwen3vl",
+        ),
     },
     "internvl": {
         "canonical": (

@@ -10,7 +10,13 @@ from dataclasses import dataclass, replace
 from whichvlm.data.vlm_inventory import canonical_vlm_family_id
 from whichvlm.engine.quantization import infer_non_gguf_quant_type
 from whichvlm.hardware.types import HardwareInfo
-from whichvlm.models.package_graph import is_projector_filename, is_vision_model
+from whichvlm.models.integrations import (
+    VISUAL_COMPONENT_ROLES,
+    capabilities_for_data,
+    has_visual_input,
+    pipeline_tag_has_visual_input,
+)
+from whichvlm.models.package_graph import is_projector_filename
 from whichvlm.models.types import GGUFVariant, ModelArtifact, ModelInfo
 
 # Runtime layer. Chooses script shape for local run backends.
@@ -186,9 +192,16 @@ def uv_command(deps: list[str], command: list[str]) -> list[str]:
 
 def model_family_keys(model: ModelInfo) -> set[str]:
     keys = {model.family_id, model.architecture}
-    for model_id in [model.id, model.base_model, model.variant_of, *model.base_models]:
-        if model_id:
-            family = canonical_vlm_family_id(model_id)
+    for value in [
+        model.id,
+        model.family_id,
+        model.architecture,
+        model.base_model,
+        model.variant_of,
+        *model.base_models,
+    ]:
+        if value:
+            family = canonical_vlm_family_id(value)
             if family:
                 keys.add(family)
     return {key for key in keys if key}
@@ -247,14 +260,19 @@ def matrix_supports(
 
 
 def is_vlm_model(model: ModelInfo) -> bool:
-    # VLM check. Detects image-capable models from HF metadata and components.
-    if is_vision_model(
-        model.id, model.hf_pipeline_tag, model.tags, model.architecture
-    ):
+    if has_visual_input(model.capabilities):
+        return True
+    if capabilities_for_data(
+        model.id,
+        model.hf_pipeline_tag,
+        model.tags,
+        model.architecture,
+    ).image:
+        return True
+    if pipeline_tag_has_visual_input(model.hf_pipeline_tag):
         return True
     return any(
-        component.role in {"vision_encoder", "projector", "processor"}
-        for component in model.components
+        component.role in VISUAL_COMPONENT_ROLES for component in model.components
     )
 
 

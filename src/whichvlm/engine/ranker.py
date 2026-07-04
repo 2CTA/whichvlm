@@ -30,7 +30,11 @@ from whichvlm.models.benchmark import (
     build_score_index,
     lookup_benchmark_evidence,
 )
-from whichvlm.models.package_graph import is_vision_model
+from whichvlm.models.integrations import (
+    VISUAL_COMPONENT_ROLES,
+    specialization_tags_for_capabilities,
+    specialization_tags_for_data,
+)
 from whichvlm.models.types import GGUFVariant, ModelCapabilities, ModelInfo
 
 # Ranking core. Expands variants, scores fit, and orders final picks.
@@ -440,20 +444,18 @@ def detect_specializations(model: ModelInfo) -> set[str]:
     tags: set[str] = set()
     if re.search(r"(coder|codegen|starcoder|program|coding)", lower):
         tags.add("coding")
-    if re.search(
-        r"(^|[-_/])(ocr|docvqa|document)([-_/]|$)|text[-_ ]?recognition",
-        lower,
+    tags.update(specialization_tags_for_capabilities(model.capabilities))
+    tags.update(
+        specialization_tags_for_data(
+            model.id,
+            model.hf_pipeline_tag,
+            model.tags,
+            model.architecture,
+        )
+    )
+    if any(
+        component.role in VISUAL_COMPONENT_ROLES for component in model.components
     ):
-        tags.update({"ocr", "vision"})
-    if is_vision_model(
-        model.id, model.hf_pipeline_tag, model.tags, model.architecture
-    ) or any(
-        component.role in {"vision_encoder", "projector", "processor"}
-        for component in model.components
-    ):
-        tags.add("vision")
-    caps = model.capabilities
-    if caps.image or caps.video or caps.audio:
         tags.add("vision")
     if re.search(r"(^|[-_/])math([-_/]|$)", lower):
         tags.add("math")

@@ -10,6 +10,10 @@ import httpx
 from whichvlm.constants import QUANT_BYTES_PER_WEIGHT
 from whichvlm.data.vlm_inventory import known_vlm_model_ids
 from whichvlm.models.http import get_with_retries
+from whichvlm.models.integrations import (
+    capabilities_for_data,
+    discovery_pipeline_tags,
+)
 from whichvlm.models.package_graph import (
     artifact_from_dict,
     artifact_to_dict,
@@ -22,7 +26,6 @@ from whichvlm.models.package_graph import (
     component_to_dict,
     infer_variant_kind,
     is_projector_filename,
-    is_vision_model,
     lineage_from_dict,
     lineage_to_dict,
     looks_quantized_repo_name,
@@ -52,13 +55,7 @@ TASK_EVAL_KEYWORDS: dict[str, tuple[str, ...]] = {
     "hf_video": ("video", "videomme", "mvbench", "activitynet", "nextqa"),
     "hf_audio": ("audio", "speech", "asr", "voice", "spoken"),
 }
-VLM_PIPELINE_TAGS = (
-    "image-text-to-text",
-    "visual-question-answering",
-    "image-to-text",
-    "video-text-to-text",
-    "audio-text-to-text",
-)
+VLM_PIPELINE_TAGS = discovery_pipeline_tags()
 VLM_VARIANT_FILTERS = (None, "gguf", "mlx", "awq", "gptq", "bnb", "fp8")
 HF_MODEL_EXPAND = (
     "config",
@@ -285,6 +282,13 @@ def infer_model_capabilities(
     tags: list[str],
     architecture: str = "",
 ) -> ModelCapabilities:
+    if not architecture:
+        architecture = " ".join(metadata_words(config.get("architectures")))
+    if not architecture:
+        architecture = str(
+            config.get("architecture") or config.get("model_type") or ""
+        )
+
     metadata_text = " ".join(
         [
             str(pipeline_tag or ""),
@@ -319,19 +323,24 @@ def infer_model_capabilities(
         image = True
     if video:
         image = True
-    if is_vision_model(model_id, pipeline_tag, tags, architecture):
-        image = True
 
+    registry_caps = capabilities_for_data(
+        model_id,
+        pipeline_tag,
+        tags,
+        architecture,
+        extract_languages(card_data, tags),
+    )
     return ModelCapabilities(
-        image=image,
-        video=video,
-        audio=audio,
-        ocr=ocr,
-        document=document,
-        chart=chart,
-        multi_image=multi_image,
-        tool_use=tool_use,
-        supported_languages=extract_languages(card_data, tags),
+        image=image or registry_caps.image,
+        video=video or registry_caps.video,
+        audio=audio or registry_caps.audio,
+        ocr=ocr or registry_caps.ocr,
+        document=document or registry_caps.document,
+        chart=chart or registry_caps.chart,
+        multi_image=multi_image or registry_caps.multi_image,
+        tool_use=tool_use or registry_caps.tool_use,
+        supported_languages=registry_caps.supported_languages,
     )
 
 
@@ -791,6 +800,14 @@ def parse_model(data: dict) -> ModelInfo | None:
         gguf_meta = {}
     if not architecture:
         architecture = gguf_meta.get("architecture", "")
+    capabilities = infer_model_capabilities(
+        model_id,
+        config=config,
+        card_data=card_data,
+        pipeline_tag=data.get("pipeline_tag"),
+        tags=tags,
+        architecture=architecture,
+    )
     artifacts = build_artifacts(
         model_id,
         model_format=model_format,
@@ -808,6 +825,7 @@ def parse_model(data: dict) -> ModelInfo | None:
         pipeline_tag=data.get("pipeline_tag"),
         tags=tags,
         lineage=lineage,
+        capabilities=capabilities,
         architecture=architecture,
     )
 
@@ -825,15 +843,6 @@ def parse_model(data: dict) -> ModelInfo | None:
     if eval_score is not None:
         benchmark_scores["hf_eval"] = eval_score
     benchmark_scores.update(extract_hf_task_scores(data))
-
-    capabilities = infer_model_capabilities(
-        model_id,
-        config=config,
-        card_data=card_data,
-        pipeline_tag=data.get("pipeline_tag"),
-        tags=tags,
-        architecture=architecture,
-    )
 
     return ModelInfo(
         id=model_id,
@@ -918,6 +927,7 @@ def parse_model(data: dict) -> ModelInfo | None:
         base_model=base_model,
         hf_pipeline_tag=data.get("pipeline_tag"),
         tags=tags,
+        capabilities=capabilities,
         access=access,
         is_official=is_official,
         model_format=model_format,
@@ -928,7 +938,6 @@ def parse_model(data: dict) -> ModelInfo | None:
         artifacts=artifacts,
         components=components,
         lineage=lineage,
-        capabilities=capabilities,
     )
 
 
@@ -1258,6 +1267,17 @@ def dicts_to_models(data: list[dict]) -> list[ModelInfo]:
         quantization_type = d.get("quantization_type")
         variant_kind = d.get("variant_kind", "base")
         access = d.get("access", "unknown")
+        architecture = d.get("architecture", "")
+        capabilities = capabilities_from_dict(d.get("capabilities"))
+        if d.get("capabilities") is None:
+            capabilities = infer_model_capabilities(
+                d["id"],
+                config=d,
+                card_data={},
+                pipeline_tag=d.get("hf_pipeline_tag"),
+                tags=tags,
+                architecture=architecture,
+            )
         if not artifacts:
             artifacts = build_artifacts(
                 d["id"],
@@ -1276,17 +1296,8 @@ def dicts_to_models(data: list[dict]) -> list[ModelInfo]:
                 pipeline_tag=d.get("hf_pipeline_tag"),
                 tags=tags,
                 lineage=lineage,
-                architecture=d.get("architecture", ""),
-            )
-        capabilities = capabilities_from_dict(d.get("capabilities"))
-        if d.get("capabilities") is None:
-            capabilities = infer_model_capabilities(
-                d["id"],
-                config=d,
-                card_data={},
-                pipeline_tag=d.get("hf_pipeline_tag"),
-                tags=tags,
-                architecture=d.get("architecture", ""),
+                capabilities=capabilities,
+                architecture=architecture,
             )
         models.append(
             ModelInfo(
@@ -1295,7 +1306,7 @@ def dicts_to_models(data: list[dict]) -> list[ModelInfo]:
                 name=d["name"],
                 parameter_count=param_count,
                 parameter_count_active=active_params,
-                architecture=d.get("architecture", ""),
+                architecture=architecture,
                 is_moe=d.get("is_moe", False) or active_params is not None,
                 context_length=d.get("context_length"),
                 layer_count=d.get("layer_count"),
@@ -1323,6 +1334,7 @@ def dicts_to_models(data: list[dict]) -> list[ModelInfo]:
                 base_model=base_model,
                 hf_pipeline_tag=d.get("hf_pipeline_tag"),
                 tags=tags,
+                capabilities=capabilities,
                 access=access,
                 is_official=d.get("is_official", is_official_model(d["id"])),
                 model_format=model_format,
@@ -1333,7 +1345,6 @@ def dicts_to_models(data: list[dict]) -> list[ModelInfo]:
                 artifacts=artifacts,
                 components=components,
                 lineage=lineage,
-                capabilities=capabilities,
             )
         )
     return models

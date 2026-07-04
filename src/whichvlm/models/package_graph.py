@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import re
 
+from whichvlm.models.integrations import (
+    capabilities_for_data,
+    component_roles_for_capabilities,
+    pipeline_tag_has_visual_input,
+)
 from whichvlm.models.types import (
     GGUFVariant,
     ModelArtifact,
@@ -64,17 +69,9 @@ def is_vision_model(
     tags: list[str],
     architecture: str = "",
 ) -> bool:
-    haystack = " ".join(
-        [model_id, str(pipeline_tag or ""), architecture, *tags]
-    ).lower()
-    return bool(
-        re.search(
-            r"(image-text-to-text|visual-question-answering|image-to-text|"
-            r"vision-language|multimodal|qwen.*vl|llava|pixtral|internvl|"
-            r"deepseek[-_]vl|paligemma|idefics|mllama|phi3v|phi3_v|glm4v|"
-            r"xgenmm|fuyu|kosmos|instructblip|blip|florence|vision)",
-            haystack,
-        )
+    return (
+        capabilities_for_data(model_id, pipeline_tag, tags, architecture).image
+        or pipeline_tag_has_visual_input(pipeline_tag)
     )
 
 
@@ -179,6 +176,7 @@ def build_components(
     pipeline_tag: object,
     tags: list[str],
     lineage: ModelLineage,
+    capabilities: ModelCapabilities | None = None,
     architecture: str = "",
 ) -> list[ModelComponent]:
     if lineage.is_merged:
@@ -190,18 +188,20 @@ def build_components(
                 quantization=quantization_type,
             )
         ]
-    if not is_vision_model(model_id, pipeline_tag, tags, architecture):
+    roles = component_roles_for_capabilities(
+        capabilities
+        or capabilities_for_data(model_id, pipeline_tag, tags, architecture)
+    )
+    if not roles:
         return []
     return [
         ModelComponent(
-            role="language",
+            role=role,
             repo_id=model_id,
-            parameter_count=parameter_count,
-            quantization=quantization_type,
-        ),
-        ModelComponent(role="vision_encoder", repo_id=model_id),
-        ModelComponent(role="projector", repo_id=model_id),
-        ModelComponent(role="processor", repo_id=model_id),
+            parameter_count=parameter_count if role == "language" else None,
+            quantization=quantization_type if role == "language" else None,
+        )
+        for role in roles
     ]
 
 
