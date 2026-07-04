@@ -4,6 +4,7 @@ from whichvlm.engine.quantization import estimate_weight_bytes
 from whichvlm.engine.quantization import effective_quant_type
 from whichvlm.engine.workload import Workload
 from whichvlm.hardware.types import GPUInfo
+from whichvlm.models.package_graph import is_vision_model
 from whichvlm.models.types import GGUFVariant, ModelInfo
 
 QUANT_EFFICIENCY: dict[str, float] = {
@@ -130,6 +131,10 @@ def looks_synthetic_gguf(model: ModelInfo, variant: GGUFVariant | None) -> bool:
 def is_multimodal_model(model: ModelInfo) -> bool:
     caps = model.capabilities
     if caps.image or caps.video or caps.audio:
+        return True
+    if is_vision_model(
+        model.id, model.hf_pipeline_tag, model.tags, model.architecture
+    ):
         return True
     if model.hf_pipeline_tag in MULTIMODAL_PIPELINE_TAGS:
         return True

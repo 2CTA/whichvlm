@@ -22,6 +22,7 @@ from whichvlm.models.package_graph import (
     component_to_dict,
     infer_variant_kind,
     is_projector_filename,
+    is_vision_model,
     lineage_from_dict,
     lineage_to_dict,
     looks_quantized_repo_name,
@@ -282,6 +283,7 @@ def infer_model_capabilities(
     card_data: dict,
     pipeline_tag: object,
     tags: list[str],
+    architecture: str = "",
 ) -> ModelCapabilities:
     metadata_text = " ".join(
         [
@@ -316,6 +318,8 @@ def infer_model_capabilities(
     if ocr or document or chart:
         image = True
     if video:
+        image = True
+    if is_vision_model(model_id, pipeline_tag, tags, architecture):
         image = True
 
     return ModelCapabilities(
@@ -626,6 +630,13 @@ def extract_architecture(config: dict) -> str:
     if arch_list:
         arch = arch_list[0].lower()
         for name in [
+            "qwen3vl",
+            "qwen2vl",
+            "paligemma",
+            "mllama",
+            "deepseek_vl",
+            "phi3v",
+            "phi3_v",
             "llama",
             "qwen2",
             "mistral",
@@ -774,6 +785,12 @@ def parse_model(data: dict) -> ModelInfo | None:
     )
     access = extract_access(data)
     lineage = build_lineage(base_models, tags, card_data)
+    architecture = extract_architecture(config)
+    gguf_meta = data.get("gguf", {}) or {}
+    if not isinstance(gguf_meta, dict):
+        gguf_meta = {}
+    if not architecture:
+        architecture = gguf_meta.get("architecture", "")
     artifacts = build_artifacts(
         model_id,
         model_format=model_format,
@@ -791,14 +808,8 @@ def parse_model(data: dict) -> ModelInfo | None:
         pipeline_tag=data.get("pipeline_tag"),
         tags=tags,
         lineage=lineage,
+        architecture=architecture,
     )
-
-    architecture = extract_architecture(config)
-    gguf_meta = data.get("gguf", {}) or {}
-    if not isinstance(gguf_meta, dict):
-        gguf_meta = {}
-    if not architecture:
-        architecture = gguf_meta.get("architecture", "")
 
     context_length = config.get("max_position_embeddings") or config.get(
         "max_sequence_length"
@@ -821,6 +832,7 @@ def parse_model(data: dict) -> ModelInfo | None:
         card_data=card_data,
         pipeline_tag=data.get("pipeline_tag"),
         tags=tags,
+        architecture=architecture,
     )
 
     return ModelInfo(
@@ -1264,6 +1276,7 @@ def dicts_to_models(data: list[dict]) -> list[ModelInfo]:
                 pipeline_tag=d.get("hf_pipeline_tag"),
                 tags=tags,
                 lineage=lineage,
+                architecture=d.get("architecture", ""),
             )
         capabilities = capabilities_from_dict(d.get("capabilities"))
         if d.get("capabilities") is None:
@@ -1273,6 +1286,7 @@ def dicts_to_models(data: list[dict]) -> list[ModelInfo]:
                 card_data={},
                 pipeline_tag=d.get("hf_pipeline_tag"),
                 tags=tags,
+                architecture=d.get("architecture", ""),
             )
         models.append(
             ModelInfo(

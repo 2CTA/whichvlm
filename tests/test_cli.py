@@ -350,11 +350,29 @@ def test_apply_memory_budgets_sets_vram_headroom_and_ram_budget():
     assert any("RAM budget" in note for note in hw.budget_notes)
 
 
+def test_apply_memory_budgets_reserves_perf_vram():
+    hw = hw_with_gpu(20)
+
+    apply_memory_budgets(hw, vram_headroom="1GB", perf_vram="10%", ram_budget=None)
+
+    assert hw.gpus[0].usable_vram_bytes == 17 * 1024**3
+    assert any("Performance VRAM" in note for note in hw.budget_notes)
+
+
 def test_apply_memory_budgets_validates_vram_headroom_without_gpus():
     hw = HardwareInfo(gpus=[], ram_bytes=16 * 1024**3)
 
     with pytest.raises(Exit):
         apply_memory_budgets(hw, vram_headroom="nope", ram_budget=None)
+
+
+def test_apply_memory_budgets_validates_perf_vram_without_gpus():
+    hw = HardwareInfo(gpus=[], ram_bytes=16 * 1024**3)
+
+    with pytest.raises(Exit):
+        apply_memory_budgets(
+            hw, vram_headroom="none", perf_vram="nope", ram_budget=None
+        )
 
 
 def test_apply_memory_budgets_accepts_valid_noop_vram_headroom_without_gpus():
@@ -416,7 +434,7 @@ def test_main_passes_gpu_only_fit_filter(monkeypatch):
     assert captured["vision_workload"].image_count == 1
 
 
-def test_main_passes_speed_preset_and_default_runtime_columns(monkeypatch):
+def test_main_passes_speed_preset_perf_budget_and_default_runtime_columns(monkeypatch):
     model = ModelInfo(
         id="org/Test-7B",
         family_id="test-7b",
@@ -430,6 +448,7 @@ def test_main_passes_speed_preset_and_default_runtime_columns(monkeypatch):
 
     def fake_rank_models(models, hardware, **kwargs):
         captured["min_speed"] = kwargs.get("min_speed")
+        captured["usable_vram_bytes"] = hardware.gpus[0].usable_vram_bytes
         return [
             CompatibilityResult(
                 model=model,
@@ -457,10 +476,13 @@ def test_main_passes_speed_preset_and_default_runtime_columns(monkeypatch):
     )
     monkeypatch.setattr("whichvlm.output.display.display_ranking", fake_display_ranking)
 
-    result = CliRunner().invoke(app, ["--speed", "usable"])
+    result = CliRunner().invoke(
+        app, ["--speed", "usable", "--perf-vram", "10%", "--vram-headroom", "none"]
+    )
 
     assert result.exit_code == 0
     assert captured["min_speed"] == 10.0
+    assert captured["usable_vram_bytes"] == 8 * 1024**3 - int(0.8 * 1024**3)
     assert captured["show_status"] is True
 
 
@@ -1067,7 +1089,8 @@ def test_transformers_chat_script_passes_tokenizer_mapping_to_generate():
     )
 
     assert "return_dict=True" in script
-    assert "kwargs=dict(**inputs, max_new_tokens=512, streamer=streamer)" in script
+    assert "model.generate(**inputs, max_new_tokens=512, streamer=streamer)" in script
+    assert "torch.inference_mode()" in script
     assert "kwargs=dict(input_ids=inputs" not in script
 
 

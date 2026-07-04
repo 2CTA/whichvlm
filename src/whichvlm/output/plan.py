@@ -26,7 +26,7 @@ from whichvlm.output import console
 from whichvlm.output.formatting import format_bytes, format_params
 
 PLAN_QUANTS = ("Q2_K", "Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0", "F16")
-PRACTICAL_PARTIAL_MAX_OFFLOAD_RATIO = 0.65
+PRACTICAL_PARTIAL_MAX_OFFLOAD_RATIO = 0.50
 PRACTICAL_PARTIAL_MIN_USABLE_VRAM_BYTES = 6 * BYTES_PER_GIB
 PRACTICAL_PARTIAL_MIN_TOK_PER_SEC = 2.0
 MULTI_GPU_SPEED_FACTOR = 0.70
@@ -358,10 +358,7 @@ def plan_recommendations(
         "smallest_full_gpu": full_gpu,
         "smallest_partial_offload": min(
             partial_offload_rows,
-            key=lambda row: (
-                row["price_usd"] if row["price_usd"] is not None else 10**9,
-                row["usable_vram_bytes"],
-            ),
+            key=hardware_size_key,
             default=None,
         ),
         "multi_gpu_alternatives": [
