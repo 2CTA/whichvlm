@@ -38,6 +38,26 @@ app = typer.Typer(
 )
 console = Console()
 FETCH_ERRORS = (httpx.HTTPError, OSError, ValueError)
+PROFILE_CHOICES = (
+    "general",
+    "coding",
+    "vision",
+    "math",
+    "any",
+    "image_qa",
+    "ocr",
+    "document",
+    "chart",
+    "video",
+    "audio",
+    "general_multimodal",
+)
+PROFILE_HELP = f"Ranking profile: {' | '.join(PROFILE_CHOICES)}"
+DATA_PANEL = "Data"
+RANKING_PANEL = "Ranking"
+WORKLOAD_PANEL = "Workload"
+HARDWARE_PANEL = "Hardware"
+OUTPUT_PANEL = "Output"
 
 
 def vlm_progress():
@@ -119,27 +139,10 @@ def validate_output_flags(json_output: bool, markdown_output: bool) -> None:
 
 
 def validate_profile(profile: str) -> str:
-    valid = {
-        "general",
-        "coding",
-        "vision",
-        "math",
-        "any",
-        "image_qa",
-        "ocr",
-        "document",
-        "chart",
-        "video",
-        "audio",
-        "general_multimodal",
-    }
     p = profile.lower()
-    if p not in valid:
-        console.print(
-            "[red]Error:[/] --profile must be one of: general, coding, vision, "
-            "math, any, image_qa, ocr, document, chart, video, audio, "
-            "general_multimodal."
-        )
+    if p not in PROFILE_CHOICES:
+        choices = ", ".join(PROFILE_CHOICES)
+        console.print(f"[red]Error:[/] --profile must be one of: {choices}.")
         raise typer.Exit(code=1)
     return p
 
@@ -491,114 +494,159 @@ def main(
         is_eager=True,
     ),
     refresh: bool = typer.Option(
-        False, "--refresh", help="Refresh Hugging Face model metadata"
+        False,
+        "--refresh",
+        help="Refresh Hugging Face model metadata",
+        rich_help_panel=DATA_PANEL,
     ),
-    top: int = typer.Option(10, "--top", "-n", help="Number of top models to show"),
+    top: int = typer.Option(
+        10,
+        "--top",
+        "-n",
+        help="Number of top models to show",
+        rich_help_panel=RANKING_PANEL,
+    ),
     context_length: int = typer.Option(
         4096,
         "--context-length",
         "-c",
         click_type=CONTEXT_LENGTH,
         help="Context length for KV cache estimation (e.g. 4096, 64k, 128k)",
+        rich_help_panel=WORKLOAD_PANEL,
     ),
     image_count: int = typer.Option(
         1,
         "--image-count",
         help="Images per request for VLM memory estimation",
+        rich_help_panel=WORKLOAD_PANEL,
     ),
     image_size: int = typer.Option(
         448,
         "--image-size",
         help="Input image edge size for VLM memory estimation",
+        rich_help_panel=WORKLOAD_PANEL,
     ),
     video_frames: int = typer.Option(
         0,
         "--video-frames",
         help="Video frames per request for workload estimation",
+        rich_help_panel=WORKLOAD_PANEL,
     ),
     audio_seconds: float = typer.Option(
         0.0,
         "--audio-seconds",
         help="Audio seconds per request for workload estimation",
+        rich_help_panel=WORKLOAD_PANEL,
     ),
     batch_size: int = typer.Option(
         1,
         "--batch-size",
         help="Requests per batch for memory and speed estimation",
+        rich_help_panel=WORKLOAD_PANEL,
     ),
     quant: Optional[str] = typer.Option(
-        None, "--quant", "-q", help="Filter by quantization type (e.g. Q4_K_M)"
+        None,
+        "--quant",
+        "-q",
+        help="Filter by quantization type (e.g. Q4_K_M)",
+        rich_help_panel=RANKING_PANEL,
     ),
     min_speed: Optional[float] = typer.Option(
-        None, "--min-speed", help="Minimum estimated decode tok/s"
+        None,
+        "--min-speed",
+        help="Minimum estimated decode tok/s",
+        rich_help_panel=RANKING_PANEL,
     ),
     speed: str = typer.Option(
         "any",
         "--speed",
         help="Speed preset: any | usable | fast",
+        rich_help_panel=RANKING_PANEL,
     ),
     fit: str = typer.Option(
         "any",
         "--fit",
         help="Memory fit: any | gpu | full-gpu",
+        rich_help_panel=RANKING_PANEL,
     ),
     gpu_only: bool = typer.Option(
         False,
         "--gpu-only",
         help="Only show full-GPU fits",
+        rich_help_panel=RANKING_PANEL,
     ),
     evidence: str = typer.Option(
         "any",
         "--evidence",
         help="Benchmark evidence filter: strict | base | any",
+        rich_help_panel=RANKING_PANEL,
     ),
     direct: bool = typer.Option(
         False,
         "--direct",
         help="Alias of --evidence strict",
+        rich_help_panel=RANKING_PANEL,
     ),
     status: bool = typer.Option(
         False,
         "--status",
         help="Show runtime columns (default; kept for compatibility)",
+        rich_help_panel=OUTPUT_PANEL,
     ),
     details: bool = typer.Option(
         False,
         "--details",
         help="Show metadata columns; with --json, emit full diagnostic JSON",
+        rich_help_panel=OUTPUT_PANEL,
     ),
     min_params: Optional[float] = typer.Option(
         None,
         "--min-params",
         help="Minimum effective parameter size in billions (e.g. 7)",
+        rich_help_panel=RANKING_PANEL,
     ),
     profile: str = typer.Option(
         "vision",
         "--profile",
-        help="Ranking profile or workload task",
+        help=PROFILE_HELP,
+        rich_help_panel=RANKING_PANEL,
     ),
-    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output as JSON",
+        rich_help_panel=OUTPUT_PANEL,
+    ),
     markdown_output: bool = typer.Option(
         False,
         "--markdown",
         "-m",
         help="Output as GitHub-Flavored Markdown",
+        rich_help_panel=OUTPUT_PANEL,
     ),
     cpu_only: bool = typer.Option(
-        False, "--cpu-only", help="Ignore GPUs and rank CPU/RAM fallback"
+        False,
+        "--cpu-only",
+        help="Ignore GPUs and rank CPU/RAM fallback",
+        rich_help_panel=HARDWARE_PANEL,
     ),
     gpu: Optional[list[str]] = typer.Option(
         None,
         "--gpu",
         help="Simulate GPU hardware, e.g. 'RTX 4090', 'Apple M3 Max', or repeat --gpu",
+        rich_help_panel=HARDWARE_PANEL,
     ),
     vram: Optional[float] = typer.Option(
-        None, "--vram", help="Override simulated VRAM in GB; requires --gpu"
+        None,
+        "--vram",
+        help="Override simulated VRAM in GB; requires --gpu",
+        rich_help_panel=HARDWARE_PANEL,
     ),
     vram_headroom: str = typer.Option(
         "auto",
         "--vram-headroom",
         help="Reserve GPU memory for the OS/runtime: auto | none | 1GB | 10%",
+        rich_help_panel=HARDWARE_PANEL,
     ),
     perf_vram: str = typer.Option(
         "none",
@@ -609,11 +657,13 @@ def main(
         None,
         "--ram-budget",
         help="RAM budget for CPU/offload fallback: available | 8GB | 50%",
+        rich_help_panel=HARDWARE_PANEL,
     ),
     freshness_weight: float = typer.Option(
         1.0,
         "--freshness-weight",
         help="Scale lineage freshness in ranking scores: 0 disables it, 1 uses full weight",
+        rich_help_panel=RANKING_PANEL,
     ),
 ):
 
@@ -769,7 +819,7 @@ def main(
         console.print()
 
 
-@app.command()
+@app.command(help="Plan memory, quantization, and GPU fit for a model.")
 def plan(
     model_name: str = typer.Argument(..., help="Model name or HuggingFace repo ID"),
     context_length: int = typer.Option(
@@ -861,7 +911,7 @@ def plan(
         console.print()
 
 
-@app.command("hardware-plan")
+@app.command("hardware-plan", help="Rank models for a target GPU.")
 def hardware_plan(
     gpu_name: str = typer.Argument(..., help="Target GPU, e.g. 'RTX 4070'"),
     context_length: int = typer.Option(
@@ -870,64 +920,93 @@ def hardware_plan(
         "-c",
         click_type=CONTEXT_LENGTH,
         help="Context length for KV cache estimation (e.g. 4096, 64k, 128k)",
+        rich_help_panel=WORKLOAD_PANEL,
     ),
     quant: Optional[str] = typer.Option(
-        None, "--quant", "-q", help="Target quantization"
+        None,
+        "--quant",
+        "-q",
+        help="Target quantization",
+        rich_help_panel=RANKING_PANEL,
     ),
-    top: int = typer.Option(10, "--top", "-n", help="Number of models to show"),
+    top: int = typer.Option(
+        10,
+        "--top",
+        "-n",
+        help="Number of models to show",
+        rich_help_panel=RANKING_PANEL,
+    ),
     profile: str = typer.Option(
         "vision",
         "--profile",
-        help="Ranking profile or workload task",
+        help=PROFILE_HELP,
+        rich_help_panel=RANKING_PANEL,
     ),
     image_count: int = typer.Option(
         1,
         "--image-count",
         help="Images per request for VLM memory estimation",
+        rich_help_panel=WORKLOAD_PANEL,
     ),
     image_size: int = typer.Option(
         448,
         "--image-size",
         help="Input image edge size for VLM memory estimation",
+        rich_help_panel=WORKLOAD_PANEL,
     ),
     video_frames: int = typer.Option(
         0,
         "--video-frames",
         help="Video frames to budget as visual inputs",
+        rich_help_panel=WORKLOAD_PANEL,
     ),
     audio_seconds: float = typer.Option(
         0.0,
         "--audio-seconds",
         help="Audio seconds per request for workload estimation",
+        rich_help_panel=WORKLOAD_PANEL,
     ),
     batch_size: int = typer.Option(
         1,
         "--batch-size",
         help="Requests per batch for memory and speed estimation",
+        rich_help_panel=WORKLOAD_PANEL,
     ),
     ram: Optional[str] = typer.Option(
         None,
         "--ram",
         help="System RAM budget for partial offload, e.g. 64GB",
+        rich_help_panel=HARDWARE_PANEL,
     ),
     vram: Optional[float] = typer.Option(
         None,
         "--vram",
         help="Override target GPU VRAM in GB",
+        rich_help_panel=HARDWARE_PANEL,
     ),
     min_speed: Optional[float] = typer.Option(
         None,
         "--min-speed",
         help="Minimum estimated generation speed in tok/s",
+        rich_help_panel=RANKING_PANEL,
     ),
     os_name: str = typer.Option(
         "linux",
         "--os",
         help="Target OS for backend compatibility",
+        rich_help_panel=HARDWARE_PANEL,
     ),
-    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output as JSON",
+        rich_help_panel=OUTPUT_PANEL,
+    ),
     refresh: bool = typer.Option(
-        False, "--refresh", help="Ignore cache and re-fetch models"
+        False,
+        "--refresh",
+        help="Ignore cache and re-fetch models",
+        rich_help_panel=DATA_PANEL,
     ),
 ):
 
@@ -1010,7 +1089,7 @@ def hardware_plan(
         console.print()
 
 
-@app.command()
+@app.command(help="Compare current hardware with target GPU upgrades.")
 def upgrade(
     target_gpus: list[str] = typer.Argument(
         ...,
@@ -1325,7 +1404,7 @@ def resolve_ranked_gguf_for_run(
     return model, variant
 
 
-@app.command()
+@app.command(help="Run a selected or recommended model.")
 def run(
     model_name: Optional[str] = typer.Argument(
         None, help="Model to run (default: auto-pick best)"
@@ -1493,7 +1572,7 @@ def run(
         raise typer.Exit(code=1)
 
 
-@app.command()
+@app.command(help="Serve a selected model over HTTP.")
 def serve(
     model_name: str = typer.Argument(..., help="Model to serve"),
     context_length: int = typer.Option(
@@ -1569,7 +1648,7 @@ def serve(
         raise typer.Exit(code=1)
 
 
-@app.command()
+@app.command(help="Print a runnable script for a selected model.")
 def snippet(
     model_name: Optional[str] = typer.Argument(
         None, help="Model to show snippet for (default: auto-pick best)"
@@ -1649,7 +1728,7 @@ def snippet(
     console.print(Syntax(code, "python", theme="monokai"))
 
 
-@app.command()
+@app.command(help="Show detected or simulated hardware.")
 def hardware(
     cpu_only: bool = typer.Option(
         False, "--cpu-only", help="Ignore GPU and run in CPU-only mode"
