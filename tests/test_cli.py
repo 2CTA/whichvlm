@@ -202,6 +202,29 @@ def test_module_entrypoint_uses_cli_app():
     assert main_mod.app is app
 
 
+def test_main_help_groups_options_by_task():
+    result = CliRunner().invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "Ranking" in result.stdout
+    assert "Workload" in result.stdout
+    assert "Hardware" in result.stdout
+    assert "Output" in result.stdout
+    assert "Data" in result.stdout
+    assert "Plan memory, quantization, and GPU fit for a model." in result.stdout
+
+
+def test_hardware_plan_help_lists_all_profiles():
+    result = CliRunner().invoke(app, ["hardware-plan", "--help"])
+
+    assert result.exit_code == 0
+    assert "Workload" in result.stdout
+    assert "Ranking" in result.stdout
+    assert "Hardware" in result.stdout
+    for profile in cli_mod.PROFILE_CHOICES:
+        assert profile in result.stdout
+
+
 def test_format_fetch_error_uses_exception_class_when_message_is_empty():
     class EmptyNetworkError(Exception):
         def __str__(self) -> str:
