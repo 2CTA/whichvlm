@@ -20,6 +20,7 @@ from whichvlm.engine.quantization import (
 from whichvlm.engine.types import CompatibilityResult
 from whichvlm.engine.workload import Workload, WorkloadTask
 from whichvlm.hardware.types import (
+    GPUInfo,
     HardwareInfo,
     has_backend,
     infer_backend_capabilities,
@@ -48,6 +49,22 @@ LINEAGE_FAMILY_MAX: dict[str, int] = {
     family: max(idx for _, idx in entries) for family, entries in LINEAGE_REGEX.items()
 }
 MULTI_GPU_SPEED_FACTOR = 0.70
+QUANT_PREFERENCE_RANK = {
+    quant: idx for idx, quant in enumerate(QUANT_PREFERENCE_ORDER)
+}
+EXTREME_QUANTS = {
+    "Q2_K",
+    "Q2_0",
+    "Q1_0",
+    "TQ2_0",
+    "TQ1_0",
+    "IQ3_XXS",
+    "IQ2_XXS",
+    "IQ2_S",
+    "IQ2_M",
+    "IQ1_M",
+    "IQ1_S",
+}
 
 
 def family_selection_key(
@@ -265,28 +282,14 @@ def iter_candidate_variants(
         if not candidates:
             return []
     else:
-        EXTREME_QUANTS = {
-            "Q2_K",
-            "Q2_0",
-            "Q1_0",
-            "TQ2_0",
-            "TQ1_0",
-            "IQ3_XXS",
-            "IQ2_XXS",
-            "IQ2_S",
-            "IQ2_M",
-            "IQ1_M",
-            "IQ1_S",
-        }
         filtered = [v for v in candidates if v.quant_type.upper() not in EXTREME_QUANTS]
         if filtered:
             candidates = filtered
 
     def variant_sort_key(v: GGUFVariant) -> int:
-        try:
-            return QUANT_PREFERENCE_ORDER.index(v.quant_type.upper())
-        except ValueError:
-            return len(QUANT_PREFERENCE_ORDER)
+        return QUANT_PREFERENCE_RANK.get(
+            v.quant_type.upper(), len(QUANT_PREFERENCE_ORDER)
+        )
 
     candidates = sorted(candidates, key=variant_sort_key)
 
@@ -666,10 +669,12 @@ def backend_priority_bonus(
     variant: GGUFVariant | None,
     hardware: HardwareInfo,
     model_backends: set[str] | None = None,
+    best_gpu: GPUInfo | None = None,
 ) -> float:
     if not hardware.gpus:
         return -4.0
-    best_gpu = max(hardware.gpus, key=lambda g: g.vram_bytes)
+    if best_gpu is None:
+        best_gpu = max(hardware.gpus, key=lambda g: g.vram_bytes)
     if model_backends is None:
         model_backends = model_artifact_backends(model)
 
@@ -884,7 +889,6 @@ def rank_models(
 ) -> list[CompatibilityResult]:
     # Main rank pass. Scores every candidate against hardware and evidence.
 
-    results: list[CompatibilityResult] = []
     gguf_only_backend = is_gguf_only_backend(hardware)
     applied_freshness_weight = max(0.0, min(1.0, freshness_weight))
     workload = workload_from_profile(
@@ -906,7 +910,7 @@ def rank_models(
             family_dominant_downloads[fid] = m.downloads
             family_dominant_params[fid] = m.parameter_count
 
-    seen_families: set[str] = set()
+    results_by_family: dict[str, CompatibilityResult] = {}
 
     sorted_models = sorted(models, key=lambda m: m.downloads, reverse=True)
 
@@ -1055,6 +1059,7 @@ def rank_models(
                     variant,
                     hardware,
                     model_backends=model_backends,
+                    best_gpu=best_gpu,
                 ),
             )
             if bench_evidence.score is None:
@@ -1078,20 +1083,17 @@ def rank_models(
             continue
 
         family_key = model.family_id
-        if family_key in seen_families:
-            existing = next(
-                (r for r in results if r.model.family_id == family_key), None
-            )
-            if existing and family_selection_key(
-                best_for_model,
-                require_direct_top,
-            ) > family_selection_key(existing, require_direct_top):
-                results.remove(existing)
-                results.append(best_for_model)
-            continue
+        existing = results_by_family.get(family_key)
+        if existing is None:
+            results_by_family[family_key] = best_for_model
+        elif family_selection_key(
+            best_for_model,
+            require_direct_top,
+        ) > family_selection_key(existing, require_direct_top):
+            del results_by_family[family_key]
+            results_by_family[family_key] = best_for_model
 
-        seen_families.add(family_key)
-        results.append(best_for_model)
+    results = list(results_by_family.values())
 
     if require_direct_top:
         results.sort(

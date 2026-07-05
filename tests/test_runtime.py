@@ -134,6 +134,45 @@ def test_transformers_quantized_script_uses_bitsandbytes_loader():
     assert "max_memory=cuda_memory_limits()" in script
 
 
+def test_transformers_text_script_uses_inference_mode_and_joined_stream():
+    model = ModelInfo(
+        id="org/Test-7B",
+        family_id="test-7b",
+        name="Test-7B",
+        parameter_count=7_000_000_000,
+    )
+
+    script = generate_run_script(model, None, 4096, False)
+
+    assert "model.eval()" in script
+    assert "with torch.inference_mode():" in script
+    assert "output_parts.append(text)" in script
+    assert '"".join(output_parts)' in script
+    assert "full +=" not in script
+
+
+def test_llama_cpp_text_script_joins_streamed_response():
+    model = ModelInfo(
+        id="org/Test-7B-GGUF",
+        family_id="test-7b",
+        name="Test-7B-GGUF",
+        parameter_count=7_000_000_000,
+        gguf_variants=[
+            GGUFVariant(
+                filename="test-Q4_K_M.gguf",
+                quant_type="Q4_K_M",
+                file_size_bytes=4_000_000_000,
+            )
+        ],
+    )
+
+    script = generate_run_script(model, model.gguf_variants[0], 4096, False)
+
+    assert "output_parts.append(content)" in script
+    assert '"".join(output_parts)' in script
+    assert "full +=" not in script
+
+
 def test_generated_scripts_compile():
     gguf_variant = GGUFVariant(
         filename="test-q4.gguf",

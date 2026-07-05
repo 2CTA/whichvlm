@@ -327,6 +327,48 @@ def test_popularity_has_no_effect_with_direct_benchmark():
     assert abs(results[0].quality_score - results[1].quality_score) < 1e-9
 
 
+def test_family_replacement_preserves_stable_tie_order():
+    def rankable_model(
+        model_id: str, family_id: str, params: int, downloads: int
+    ) -> ModelInfo:
+        return ModelInfo(
+            id=model_id,
+            family_id=family_id,
+            name=model_id.rsplit("/", 1)[-1],
+            parameter_count=params,
+            downloads=downloads,
+            gguf_variants=[
+                GGUFVariant(
+                    filename="model-Q4_K_M.gguf",
+                    quant_type="Q4_K_M",
+                    file_size_bytes=int(params * 0.5625),
+                ),
+            ],
+        )
+
+    first_family_low = rankable_model(
+        "trusted/A-low", "family-a", 2_000_000_000, 300
+    )
+    tied_other_family = rankable_model("trusted/B", "family-b", 8_000_000_000, 200)
+    first_family_best = rankable_model(
+        "trusted/A-best", "family-a", 8_000_000_000, 100
+    )
+
+    results = rank_models(
+        [first_family_low, tied_other_family, first_family_best],
+        make_hardware(bandwidth_gbps=900.0),
+        top_n=2,
+        benchmark_scores={
+            "trusted/A-low": 30.0,
+            "trusted/B": 70.0,
+            "trusted/A-best": 70.0,
+        },
+        require_direct_top=False,
+    )
+
+    assert [r.model.id for r in results] == ["trusted/B", "trusted/A-best"]
+
+
 def test_freshness_weight_can_disable_generation_score_delta():
     newer = ModelInfo(
         id="Qwen/Qwen3.6-8B",
