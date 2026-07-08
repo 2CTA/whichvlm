@@ -34,6 +34,7 @@ Simulate Apple Silicon or a discrete GPU:
 ```bash
 uv run whichvlm --gpu "Apple M3 Max"
 uv run whichvlm --gpu "RTX 4090" --vram-headroom 10%
+uv run whichvlm --gpu "RTX 4090" --perf-vram 10%
 ```
 
 Return machine-readable output:

@@ -308,12 +308,9 @@ def apply_memory_budgets(
     if perf_reserved_values:
         unique_reserved = sorted(set(perf_reserved_values))
         if len(unique_reserved) == 1:
-            note = (
-                "Performance VRAM: "
-                f"{format_budget_bytes(unique_reserved[0])} reserved per GPU"
-            )
+            note = f"Performance reserve: {format_budget_bytes(unique_reserved[0])} per GPU"
         else:
-            note = "Performance VRAM: reserve applied per GPU"
+            note = "Performance reserve: applied per GPU"
         hardware.budget_notes.append(note)
 
     if ram_budget:
@@ -639,6 +636,7 @@ def main(
         "none",
         "--perf-vram",
         help="Reserve GPU memory for inference performance features: none | 1GB | 10%",
+        rich_help_panel=HARDWARE_PANEL,
     ),
     ram_budget: Optional[str] = typer.Option(
         None,

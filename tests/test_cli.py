@@ -237,6 +237,7 @@ def test_main_help_groups_options_by_task():
     assert "Ranking" in result.stdout
     assert "Workload" in result.stdout
     assert "Hardware" in result.stdout
+    assert "--perf-vram" in result.stdout
     assert "Output" in result.stdout
     assert "Data" in result.stdout
     assert "Plan memory, quantization, and GPU fit for a model." in result.stdout
@@ -373,7 +374,7 @@ def test_apply_memory_budgets_reserves_perf_vram():
     apply_memory_budgets(hw, vram_headroom="1GB", perf_vram="10%", ram_budget=None)
 
     assert hw.gpus[0].usable_vram_bytes == 17 * 1024**3
-    assert any("Performance VRAM" in note for note in hw.budget_notes)
+    assert any("Performance reserve" in note for note in hw.budget_notes)
 
 
 def test_apply_memory_budgets_validates_vram_headroom_without_gpus():
