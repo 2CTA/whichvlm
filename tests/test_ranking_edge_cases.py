@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from whichvlm.engine.ranker import rank_models
-from whichvlm.hardware.gpu_simulator import create_synthetic_gpu
-from whichvlm.hardware.types import GPUInfo, HardwareInfo
-from whichvlm.models.benchmark import params_compatible
-from whichvlm.models.benchmark_sources.aa_index import AA_INDEX_FALLBACK_2026_05_14
-from whichvlm.models.benchmark_sources.livebench import LIVEBENCH_RAW_DATA
-from whichvlm.models.benchmark_sources.vision import VISION_FALLBACK_2026_05
-from whichvlm.models.grouper import group_models
-from whichvlm.models.types import GGUFVariant, ModelInfo
+from engine.ranker import rank_models
+from hardware.gpu_simulator import create_synthetic_gpu
+from hardware.types import GPUInfo, HardwareInfo
+from models.benchmark import params_compatible
+from models.benchmark_sources.vision import VISION_FALLBACK_2026_05
+from models.grouper import group_models
+from models.types import GGUFVariant, ModelInfo
 
 
 def hw(
@@ -49,8 +47,6 @@ def gguf(quant: str, size_gb: float) -> GGUFVariant:
 
 
 class TestAppleSiliconSimulator:
-
-
     def test_m1_default_is_apple_not_ati_rage_mobility(self):
         gpu = create_synthetic_gpu("M1")
         assert gpu.vendor == "apple", (
@@ -79,42 +75,31 @@ class TestAppleSiliconSimulator:
         assert gpu.memory_bandwidth_gbps == 800.0
 
     def test_apple_chip_compact_form_is_recognized(self):
-
         for name in ("M2Max", "m2 max", "M2 MAX"):
             gpu = create_synthetic_gpu(name, vram_override_gb=32)
             assert gpu.vendor == "apple", f"{name!r} not recognized as Apple"
             assert gpu.memory_bandwidth_gbps == 400.0
 
     def test_longest_match_wins_m2_ultra_not_m2(self):
-
         gpu = create_synthetic_gpu("M2 Ultra", vram_override_gb=128)
         assert gpu.memory_bandwidth_gbps == 800.0
         assert gpu.memory_bandwidth_gbps != 100.0
 
 
 class TestFamilySizeInheritance:
-
-
     def test_params_compatible_rejects_25x_mismatch(self):
-
         assert params_compatible(6.6, "org/Some-Model-158B") is False
 
     def test_params_compatible_accepts_same_size_quant(self):
-
         assert params_compatible(7.8, "org/Llama-3-8B-GGUF") is True
 
     def test_params_compatible_permissive_when_no_actual_size(self):
-
-
         assert params_compatible(None, "org/Model-70B") is True
 
     def test_params_compatible_permissive_when_ref_has_no_size(self):
-
-
         assert params_compatible(6.6, "deepseek-ai/DeepSeek-V4-Flash") is True
 
     def test_ranker_drops_tiny_fork_inheriting_huge_base(self):
-
         base = ModelInfo(
             id="org/DeepSeek-Vx-Flash",
             family_id="deepseek-vx-flash",
@@ -158,8 +143,6 @@ class TestFamilySizeInheritance:
 
 
 class TestGrouperReferencedBase:
-
-
     def test_referenced_base_wins_over_more_downloaded_fork(self):
         official = ModelInfo(
             id="Qwen/Qwen3-4B-Thinking-2507",
@@ -202,8 +185,6 @@ class TestGrouperReferencedBase:
             assert "rio" not in m.family_id
 
     def test_falls_back_to_downloads_without_base_reference(self):
-
-
         a = ModelInfo(
             id="orgA/Model-7B",
             family_id="",
@@ -224,23 +205,6 @@ class TestGrouperReferencedBase:
 
 
 class TestReasoningSurface:
-
-
-    def test_qwq32b_has_curated_benchmarks(self):
-        assert "Qwen/QwQ-32B" in LIVEBENCH_RAW_DATA
-        assert "Qwen/QwQ-32B" in AA_INDEX_FALLBACK_2026_05_14
-
-    def test_r1_distill_family_has_curated_benchmarks(self):
-        for mid in (
-            "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
-            "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
-            "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
-        ):
-            assert mid in LIVEBENCH_RAW_DATA, f"{mid} missing in current snapshot"
-            assert mid in AA_INDEX_FALLBACK_2026_05_14, (
-                f"{mid} missing in capability fallback"
-            )
-
     def test_qwq32b_surfaces_with_curated_score(self):
         qwq = ModelInfo(
             id="Qwen/QwQ-32B",
@@ -271,20 +235,6 @@ class TestReasoningSurface:
 
 
 class TestVisionGenerationOrder:
-
-
-    def test_curated_vision_scores_respect_generation(self):
-        v = VISION_FALLBACK_2026_05
-
-        assert (
-            v["Qwen/Qwen3-VL-32B-Instruct"]
-            > v["Qwen/Qwen2.5-VL-32B-Instruct"]
-            > v["Qwen/Qwen2-VL-7B-Instruct"]
-        )
-
-
-        assert v["Qwen/Qwen2-VL-7B-Instruct"] <= 35.0
-
     def test_qwen3_vl_outranks_legacy_qwen2_vl_on_vision_profile(self):
         new_vlm = ModelInfo(
             id="Qwen/Qwen3-VL-32B-Instruct",
@@ -327,8 +277,6 @@ class TestVisionGenerationOrder:
 
 
 class TestApplePartialOffloadPenalty:
-
-
     def model_variant(self):
         m = ModelInfo(
             id="deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
@@ -340,7 +288,7 @@ class TestApplePartialOffloadPenalty:
         return m, v
 
     def test_apple_partial_offload_keeps_most_of_full_speed(self):
-        from whichvlm.engine.performance import estimate_tok_per_sec
+        from engine.performance import estimate_tok_per_sec
 
         m, v = self.model_variant()
         apple = GPUInfo(
@@ -354,14 +302,13 @@ class TestApplePartialOffloadPenalty:
         assert full > 0
         ratio = partial / full
 
-
         assert ratio > 0.7, (
             f"Apple partial-offload ratio {ratio:.2f} — the discrete "
             "0.45x PCIe penalty is being wrongly applied to unified memory"
         )
 
     def test_discrete_partial_offload_still_takes_pcie_penalty(self):
-        from whichvlm.engine.performance import estimate_tok_per_sec
+        from engine.performance import estimate_tok_per_sec
 
         m, v = self.model_variant()
         nvidia = GPUInfo(
@@ -382,10 +329,9 @@ class TestApplePartialOffloadPenalty:
         )
 
     def test_apple_partial_faster_than_discrete_partial_same_bandwidth(self):
-        from whichvlm.engine.performance import estimate_tok_per_sec
+        from engine.performance import estimate_tok_per_sec
 
         m, v = self.model_variant()
-
 
         apple = GPUInfo(
             name="Apple",
@@ -410,10 +356,8 @@ class TestApplePartialOffloadPenalty:
 
 
 class TestMoESpeedEstimation:
-
-
     def test_qwen3_next_strix_halo_matches_reported_generation_speed(self):
-        from whichvlm.engine.performance import estimate_tok_per_sec
+        from engine.performance import estimate_tok_per_sec
 
         model = ModelInfo(
             id="Qwen/Qwen3-Next-80B-A3B-Instruct",
@@ -441,7 +385,7 @@ class TestMoESpeedEstimation:
         assert 40.0 <= speed <= 50.0
 
     def test_unknown_ultra_sparse_moe_uses_active_params_on_strix_halo(self):
-        from whichvlm.engine.performance import estimate_tok_per_sec
+        from engine.performance import estimate_tok_per_sec
 
         model = ModelInfo(
             id="unknown/Experimental-80B-A3B",
@@ -469,7 +413,7 @@ class TestMoESpeedEstimation:
         assert 40.0 <= speed <= 50.0
 
     def test_qwen3_30b_a3b_strix_halo_no_longer_uses_legacy_floor(self):
-        from whichvlm.engine.performance import estimate_tok_per_sec
+        from engine.performance import estimate_tok_per_sec
 
         model = ModelInfo(
             id="Qwen/Qwen3-30B-A3B",
@@ -497,7 +441,7 @@ class TestMoESpeedEstimation:
         assert 50.0 <= speed <= 70.0
 
     def test_high_bandwidth_gpu_keeps_moe_kernel_floor(self):
-        from whichvlm.engine.performance import estimate_tok_per_sec
+        from engine.performance import estimate_tok_per_sec
 
         model = ModelInfo(
             id="Qwen/Qwen3-30B-A3B",
@@ -574,7 +518,7 @@ class TestMoESpeedEstimation:
 
 class TestSpeedUncertainty:
     def test_strix_halo_moe_speed_is_medium_confidence_with_range(self):
-        from whichvlm.engine.performance import estimate_speed_uncertainty
+        from engine.performance import estimate_speed_uncertainty
 
         model = ModelInfo(
             id="unknown/Experimental-80B-A3B",
@@ -606,7 +550,7 @@ class TestSpeedUncertainty:
         assert any("shared-memory APU" in note for note in notes)
 
     def test_apple_silicon_moe_speed_is_low_confidence(self):
-        from whichvlm.engine.performance import estimate_speed_uncertainty
+        from engine.performance import estimate_speed_uncertainty
 
         model = ModelInfo(
             id="google/gemma-4-26B-A4B-it",

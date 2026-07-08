@@ -4,13 +4,11 @@ import subprocess
 import json
 from pathlib import Path
 
-from whichvlm.hardware import apple, cpu
-from whichvlm.hardware.types import GPUInfo, ensure_backend_capabilities, has_backend
+from hardware import apple, cpu
+from hardware.types import GPUInfo, ensure_backend_capabilities, has_backend
 
 
 def test_cpu_name_lscpu_fallback(monkeypatch):
-
-
     arm_cpuinfo = (
         "processor\t: 0\n"
         "BogoMIPS\t: 48.00\n"
@@ -33,27 +31,25 @@ def test_cpu_name_lscpu_fallback(monkeypatch):
 
 
 def test_cpu_name_devicetree_fallback(monkeypatch, tmp_path):
-
     arm_cpuinfo = "processor\t: 0\nFeatures\t: fp asimd\n"
     monkeypatch.setattr("builtins.open", fake_open(arm_cpuinfo))
     monkeypatch.setattr("platform.system", lambda: "Linux")
-
 
     def fake_run(args, **kwargs):
         raise FileNotFoundError
 
     monkeypatch.setattr(cpu.subprocess, "run", fake_run)
 
-
     dt_model = tmp_path / "model"
     dt_model.write_bytes(b"Apple MacBook Air (M2, 2022)\x00")
-    monkeypatch.setattr(cpu, "cpu_name_from_devicetree", lambda: read_dt_model(dt_model))
+    monkeypatch.setattr(
+        cpu, "cpu_name_from_devicetree", lambda: read_dt_model(dt_model)
+    )
 
     assert cpu.detect_cpu_name() == "Apple M2"
 
 
 def test_cpu_name_devicetree_extracts_chip_variants():
-
     assert extract("Apple MacBook Air (M2, 2022)") == "Apple M2"
     assert extract("Apple Mac Mini (M4 Pro, 2024)") == "Apple M4 Pro"
     assert extract("Apple Mac Studio (M2 Ultra, 2023)") == "Apple M2 Ultra"
@@ -62,13 +58,11 @@ def test_cpu_name_devicetree_extracts_chip_variants():
 
 
 def test_cpu_name_devicetree_non_apple():
-
     assert extract("Raspberry Pi 4 Model B Rev 1.5") is None
     assert extract("Qualcomm Snapdragon 8cx Gen 3") is None
 
 
 def test_cpu_name_lscpu_ignores_dash(monkeypatch):
-
     arm_cpuinfo = "processor\t: 0\n"
     monkeypatch.setattr("builtins.open", fake_open(arm_cpuinfo))
     monkeypatch.setattr("platform.system", lambda: "Linux")
@@ -87,7 +81,6 @@ def test_cpu_name_lscpu_ignores_dash(monkeypatch):
 
 
 def test_detect_asahi_gpu_from_sysfs(monkeypatch, tmp_path):
-
     setup_asahi_sysfs(tmp_path)
     monkeypatch.setattr(apple, "chip_name_from_devicetree", lambda: "Apple M2")
     monkeypatch.setattr("psutil.virtual_memory", fake_vmem(24 * 1024**3))
@@ -106,7 +99,6 @@ def test_detect_asahi_gpu_from_sysfs(monkeypatch, tmp_path):
 
 
 def test_detect_asahi_gpu_fallback_name(monkeypatch, tmp_path):
-
     setup_asahi_sysfs(tmp_path)
     monkeypatch.setattr(apple, "chip_name_from_devicetree", lambda: None)
     monkeypatch.setattr("psutil.virtual_memory", fake_vmem(8 * 1024**3))
@@ -118,7 +110,6 @@ def test_detect_asahi_gpu_fallback_name(monkeypatch, tmp_path):
 
 
 def test_detect_asahi_gpu_ignores_non_apple_drivers(tmp_path):
-
     card = tmp_path / "card0" / "device" / "driver"
     card.mkdir(parents=True)
 
@@ -131,7 +122,6 @@ def test_detect_asahi_gpu_ignores_non_apple_drivers(tmp_path):
 
 
 def test_detect_asahi_gpu_no_drm(tmp_path):
-
     nonexistent = tmp_path / "no_drm"
     assert apple.detect_apple_gpu_linux(drm_path=nonexistent) == []
 
@@ -159,11 +149,7 @@ def test_detect_apple_gpu_macos_parses_metal_and_mlx(monkeypatch):
                 args,
                 0,
                 stdout=json.dumps(
-                    {
-                        "SPDisplaysDataType": [
-                            {"spdisplays_metal": "Metal 3"}
-                        ]
-                    }
+                    {"SPDisplaysDataType": [{"spdisplays_metal": "Metal 3"}]}
                 ),
                 stderr="",
             )
@@ -237,7 +223,6 @@ def test_mlx_readiness_requires_darwin_apple_silicon():
 
 
 def setup_asahi_sysfs(tmp_path: Path) -> None:
-
     device_dir = tmp_path / "card0" / "device"
     device_dir.mkdir(parents=True)
 
@@ -247,7 +232,6 @@ def setup_asahi_sysfs(tmp_path: Path) -> None:
 
 
 def fake_open(content: str):
-
     import builtins
     import io
 
@@ -262,10 +246,9 @@ def fake_open(content: str):
 
 
 def fake_vmem(total: int):
-
     from collections import namedtuple
 
-    Vmem = namedtuple("svmem", ["total"])
+    Vmem = namedtuple("Vmem", ["total"])
 
     def make_simulated_vmem():
         return Vmem(total=total)
@@ -274,7 +257,6 @@ def fake_vmem(total: int):
 
 
 def read_dt_model(path: Path) -> str | None:
-
     import re
 
     try:
@@ -291,7 +273,6 @@ def read_dt_model(path: Path) -> str | None:
 
 
 def extract(model: str) -> str | None:
-
     import re
 
     m = re.search(r"\b(M\d+(?:\s+(?:Pro|Max|Ultra))?)\b", model)

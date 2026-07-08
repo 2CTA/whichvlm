@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 
-from whichvlm.hardware import cpu
+from hardware import cpu
 
 
 def test_windows_cpu_name_uses_cim_when_wmic_is_empty(monkeypatch):

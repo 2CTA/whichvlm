@@ -1,9 +1,9 @@
-from whichvlm.engine.types import CompatibilityResult
-from whichvlm.models.types import ModelInfo
-from whichvlm.output.formatting import format_speed
+from engine.types import CompatibilityResult, SpeedConfidence
+from models.types import ModelInfo
+from output.formatting import format_speed
 
 
-def speed_result(speed: float, confidence: str) -> CompatibilityResult:
+def speed_result(speed: float, confidence: SpeedConfidence) -> CompatibilityResult:
     return CompatibilityResult(
         model=ModelInfo(
             id="org/model",

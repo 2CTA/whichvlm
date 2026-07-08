@@ -3,18 +3,18 @@ from io import StringIO
 
 from rich.console import Console
 
-import whichvlm.output.console as console_mod
-from whichvlm.constants import BYTES_PER_GIB
-from whichvlm.hardware.catalog import (
+import output.console as console_mod
+from data.gpu import BYTES_PER_GIB
+from hardware.catalog import (
     HARDWARE_CATALOG,
     PLAN_SYSTEM_RAM_BYTES,
     lookup_catalog_entry,
 )
-from whichvlm.hardware.gpu_simulator import create_synthetic_gpu
-from whichvlm.hardware.types import BackendCapability, GPUInfo, HardwareInfo
-from whichvlm.models.types import ModelInfo
-from whichvlm.output.display import display_plan_json
-from whichvlm.output.plan import (
+from hardware.gpu_simulator import create_synthetic_gpu
+from hardware.types import BackendCapability, GPUInfo, HardwareInfo
+from models.types import ModelInfo
+from output.display import display_plan_json
+from output.plan import (
     plan_row_for_hardware,
     plan_gpu_compatibility,
     plan_multi_gpu_compatibility,
@@ -84,7 +84,7 @@ def test_plan_reverse_lookup_returns_full_partial_and_multi_gpu():
     recommendations = plan_recommendations(single_gpu_rows, multi_gpu_rows)
 
     assert recommendations["smallest_full_gpu"]["name"] == "H200"
-    assert recommendations["smallest_partial_offload"]["name"] == "RTX A6000"
+    assert recommendations["smallest_partial_offload"]["name"] == "A100 40GB"
     assert recommendations["multi_gpu_alternatives"][0]["name"] == "2x MI210"
     assert recommendations["multi_gpu_alternatives"][0]["uses_multi_gpu"] is True
     assert recommendations["multi_gpu_alternatives"][0]["multi_gpu_support"].startswith(

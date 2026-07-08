@@ -1,16 +1,17 @@
 import asyncio
 
-import whichvlm.models.fetcher as fetcher_mod
-from whichvlm.models.fetcher import (
+import models.fetcher as fetcher_mod
+from models.fetcher import (
     extract_hf_eval_score,
     extract_published_at,
     normalize_param_count,
     parse_model,
     dicts_to_models,
     fetch_models,
+    inventory_source_provenance,
     models_to_dicts,
 )
-from whichvlm.models.types import ModelArtifact, ModelInfo
+from models.types import ModelArtifact, ModelInfo
 
 
 def test_normalize_param_count_for_quantized_repo_uses_size_hint():
@@ -196,6 +197,31 @@ def test_dicts_to_models_recovers_missing_known_parameter_count():
     assert models[0].parameter_count == 744_000_000_000
     assert models[0].parameter_count_active == 40_000_000_000
     assert models[0].is_moe is True
+
+
+def test_dicts_to_models_restores_capability_components_from_architecture():
+    models = dicts_to_models(
+        [
+            {
+                "id": "org/Archived-7B",
+                "family_id": "archived-7b",
+                "name": "Archived-7B",
+                "parameter_count": 7_000_000_000,
+                "architecture": "qwen2vl",
+                "downloads": 1,
+                "likes": 1,
+                "gguf_variants": [],
+                "benchmark_scores": {},
+            }
+        ]
+    )
+
+    assert models[0].capabilities.image is True
+    assert {component.role for component in models[0].components} >= {
+        "vision_encoder",
+        "projector",
+        "processor",
+    }
 
 
 def test_parse_model_uses_current_glm5_and_xiaomi_active_counts():
@@ -456,6 +482,7 @@ def test_parse_model_builds_vlm_package_metadata():
     assert parsed.model_format == "safetensors"
     assert parsed.variant_kind == "official"
     assert parsed.tags == ["vision-language", "safetensors"]
+    assert parsed.capabilities.image is True
     assert parsed.artifacts[0].format == "safetensors"
     assert parsed.artifacts[0].access == "ungated"
     assert parsed.components[0].role == "language"
@@ -465,6 +492,31 @@ def test_parse_model_builds_vlm_package_metadata():
         "processor",
     }
     assert parsed.lineage.base_model_ids == []
+
+
+def test_parse_model_uses_integration_registry_for_ocr_capabilities():
+    parsed = parse_model(
+        {
+            "id": "org/DocVQA-OCR-7B",
+            "pipeline_tag": "image-to-text",
+            "tags": ["document", "ocr", "safetensors"],
+            "config": {"architectures": ["Qwen2VLForConditionalGeneration"]},
+            "safetensors": {"total": 7_000_000_000},
+            "siblings": [],
+            "cardData": {},
+        }
+    )
+
+    assert parsed is not None
+    assert parsed.capabilities.image is True
+    assert parsed.capabilities.ocr is True
+    assert parsed.capabilities.document is True
+    assert {component.role for component in parsed.components} >= {
+        "language",
+        "vision_encoder",
+        "projector",
+        "processor",
+    }
 
 
 def test_parse_model_detects_transformers_vlm_from_architecture():
@@ -491,6 +543,16 @@ def test_parse_model_detects_transformers_vlm_from_architecture():
         "projector",
         "processor",
     }
+
+
+def test_inventory_discovery_uses_registered_vision_pipelines():
+    provenance = inventory_source_provenance(include_vision=True)
+
+    assert provenance["pipeline_tags"][:3] == [
+        "image-text-to-text",
+        "visual-question-answering",
+        "image-to-text",
+    ]
 
 
 def test_parse_model_extracts_architecture_metadata():
@@ -634,7 +696,6 @@ def test_parse_model_preserves_multi_parent_merged_lineage():
 
 
 def test_deepseek_v4_flash_uses_model_card_counts_over_hf_tensor_metadata():
-
     parsed = parse_model(
         {
             "id": "deepseek-ai/DeepSeek-V4-Flash",

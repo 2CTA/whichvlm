@@ -6,7 +6,7 @@ import json
 import httpx
 import pytest
 
-from whichvlm.models.benchmark_sources.aa_index import (
+from models.benchmark_sources.aa_index import (
     AA_LEADERBOARD_URL,
     ExtractionFailed,
     canonical_name,
@@ -18,8 +18,6 @@ from whichvlm.models.benchmark_sources.aa_index import (
 
 
 def rsc_page(records: list[dict]) -> str:
-
-
     fragment = ",".join(
         '{"slug":"x","name":%s,"reasoningModel":false,'
         '"intelligenceIndex":%s,"codingIndex":1.0}'
@@ -38,7 +36,6 @@ def rsc_page(records: list[dict]) -> str:
 def test_canonical_name_strips_variants_and_separators():
     assert canonical_name("Qwen3 14B (Reasoning)") == "qwen3 14b"
     assert canonical_name("Qwen3-14B") == "qwen3 14b"
-
 
     assert canonical_name("GLM-5 (Non-reasoning)") == "glm 5"
     assert canonical_name("DeepSeek V4 Pro (Reasoning, Max Effort)") == (
@@ -86,8 +83,6 @@ def run_fetch(html: str) -> dict[str, float]:
 
 
 def test_fetch_maps_canonical_names_and_merges_over_fallback():
-
-
     page = rsc_page([{"name": "Qwen3 14B (Reasoning)", "index": 55.0}])
     scores = run_fetch(page)
 

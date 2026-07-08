@@ -3,8 +3,8 @@ import asyncio
 import httpx
 import pytest
 
-from whichvlm.models.benchmark_sources.chatbot_arena import fetch_arena_scores
-from whichvlm.models.http import get_with_retries
+from models.benchmark_sources.chatbot_arena import fetch_arena_scores
+from models.http import get_with_retries
 
 
 def test_get_with_retries_retries_429_then_returns_response(monkeypatch):
@@ -22,7 +22,7 @@ def test_get_with_retries_retries_429_then_returns_response(monkeypatch):
         return httpx.Response(200, json={"ok": True}, request=request)
 
     async def run() -> httpx.Response:
-        monkeypatch.setattr("whichvlm.models.http.asyncio.sleep", fake_sleep)
+        monkeypatch.setattr("models.http.asyncio.sleep", fake_sleep)
         transport = httpx.MockTransport(handler)
         async with httpx.AsyncClient(transport=transport) as client:
             return await get_with_retries(
@@ -52,7 +52,7 @@ def test_benchmark_source_retries_429_before_final_failure(monkeypatch):
         return httpx.Response(429, request=request)
 
     async def run() -> None:
-        monkeypatch.setattr("whichvlm.models.http.asyncio.sleep", fake_sleep)
+        monkeypatch.setattr("models.http.asyncio.sleep", fake_sleep)
         transport = httpx.MockTransport(handler)
         async with httpx.AsyncClient(transport=transport) as client:
             with pytest.raises(httpx.HTTPStatusError):

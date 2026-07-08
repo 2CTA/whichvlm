@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 
-from whichvlm.hardware import windows
+from hardware import windows
 
 
 def test_detect_windows_amd_gpu(monkeypatch):

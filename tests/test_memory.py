@@ -1,6 +1,6 @@
 import pytest
 
-from whichvlm.hardware.memory import estimate_usable_ram
+from hardware.memory import estimate_usable_ram
 
 BYTES_PER_GIB = 1024**3
 

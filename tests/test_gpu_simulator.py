@@ -1,7 +1,7 @@
 import pytest
 
-from whichvlm.constants import BYTES_PER_GIB
-from whichvlm.hardware.gpu_simulator import (
+from data.gpu import BYTES_PER_GIB
+from hardware.gpu_simulator import (
     create_synthetic_gpu,
     create_synthetic_gpus,
     parse_synthetic_gpu_specs,
@@ -155,7 +155,6 @@ class TestUnknownGPU:
 
 class TestFuzzySearch:
     def test_partial_name(self):
-
         gpu = create_synthetic_gpu("GTX 1080")
         assert "1080" in gpu.name
         assert gpu.vendor == "nvidia"

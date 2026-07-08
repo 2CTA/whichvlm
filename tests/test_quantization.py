@@ -1,10 +1,10 @@
-from whichvlm.engine.quantization import (
+from engine.quantization import (
     effective_quant_type,
     estimate_weight_bytes,
     infer_non_gguf_quant_type,
 )
-from whichvlm.engine.vram import estimate_vram
-from whichvlm.models.types import ModelComponent, ModelInfo
+from engine.vram import estimate_vram
+from models.types import ModelComponent, ModelInfo
 
 
 def make_model(model_id: str, params: int = 14_000_000_000) -> ModelInfo:
@@ -48,7 +48,6 @@ def test_infer_nvfp4():
 
 
 def test_fp4_patterns_do_not_false_match_plain_ids():
-
     plain = make_model("meta-llama/Llama-3.1-8B-Instruct")
     assert infer_non_gguf_quant_type(plain.id) == "FP16"
 
@@ -69,7 +68,7 @@ def test_fp4_vram_is_lower_than_fp16_fallback():
 
 
 def test_extract_quant_type_parses_fp4_gguf_filenames():
-    from whichvlm.models.fetcher import extract_quant_type
+    from models.fetcher import extract_quant_type
 
     assert extract_quant_type("gpt-oss-20b-MXFP4.gguf") == "MXFP4"
     assert extract_quant_type("model.NVFP4.gguf") == "NVFP4"

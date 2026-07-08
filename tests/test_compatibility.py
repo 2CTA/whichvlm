@@ -1,8 +1,8 @@
-from whichvlm.constants import BYTES_PER_GIB
-from whichvlm.engine.compatibility import check_compatibility
-from whichvlm.hardware.memory import estimate_usable_ram
-from whichvlm.hardware.types import GPUInfo, HardwareInfo
-from whichvlm.models.types import GGUFVariant, ModelInfo
+from data.gpu import BYTES_PER_GIB
+from engine.compatibility import check_compatibility
+from hardware.memory import estimate_usable_ram
+from hardware.types import GPUInfo, HardwareInfo
+from models.types import GGUFVariant, ModelInfo
 
 
 def make_model(
@@ -336,7 +336,6 @@ def test_multiple_shared_memory_gpus_are_not_summed():
 
 
 def test_apple_silicon_does_not_double_count_unified_memory():
-
     model = make_model(70_000_000_000)
     variant = make_variant(40_000_000_000)
     hw = HardwareInfo(
@@ -366,7 +365,6 @@ def test_apple_silicon_does_not_double_count_unified_memory():
 
 
 def test_apple_silicon_full_gpu_fit():
-
     model = make_model(7_000_000_000)
     variant = make_variant(4_000_000_000)
     hw = HardwareInfo(
@@ -394,7 +392,6 @@ def test_apple_silicon_full_gpu_fit():
 
 
 def test_apple_silicon_vendor_guard_handles_legacy_shared_memory_false():
-
     model = make_model(70_000_000_000)
     variant = make_variant(40_000_000_000)
     hw = HardwareInfo(

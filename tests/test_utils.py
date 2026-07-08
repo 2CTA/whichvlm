@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from whichvlm.utils import cache_dir, parse_context_length, CONTEXT_LENGTH
+from utils import cache_dir, parse_context_length, CONTEXT_LENGTH
 
 
 def test_cache_dir_defaults_to_dot_cache(monkeypatch):

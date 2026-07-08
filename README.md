@@ -115,7 +115,7 @@ Compile-check source and tests:
 uv run python -m compileall -q src tests
 ```
 
-The source layout is under `src/whichvlm`. Tests live under `tests`. Avoid importing private CLI helpers in new tests; prefer runtime, ranker, fetcher, or output APIs.
+The source layout is under `src`. Tests live under `tests`. Avoid importing private CLI helpers in new tests; prefer runtime, ranker, fetcher, or output APIs.
 
 ## Real Hardware Benchmarks
 

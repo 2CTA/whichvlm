@@ -1,12 +1,12 @@
-from whichvlm.engine.quantization import effective_quant_type
-from whichvlm.engine.ranker import (
+from engine.quantization import effective_quant_type
+from engine.ranker import (
     detect_specializations,
     partial_offload_quality_factor,
     rank_models,
 )
-from whichvlm.engine.workload import Workload
-from whichvlm.hardware.types import BackendCapability, GPUInfo, HardwareInfo
-from whichvlm.models.types import (
+from engine.workload import Workload
+from hardware.types import BackendCapability, GPUInfo, HardwareInfo
+from models.types import (
     GGUFVariant,
     ModelArtifact,
     ModelCapabilities,
@@ -44,7 +44,6 @@ def make_hardware(
 
 
 def test_ranker_picks_highest_scoring_variant():
-
     model = ModelInfo(
         id="org/Test-8B-GGUF",
         family_id="org/Test-8B-GGUF",
@@ -327,6 +326,44 @@ def test_popularity_has_no_effect_with_direct_benchmark():
     assert abs(results[0].quality_score - results[1].quality_score) < 1e-9
 
 
+def test_family_replacement_preserves_stable_tie_order():
+    def rankable_model(
+        model_id: str, family_id: str, params: int, downloads: int
+    ) -> ModelInfo:
+        return ModelInfo(
+            id=model_id,
+            family_id=family_id,
+            name=model_id.rsplit("/", 1)[-1],
+            parameter_count=params,
+            downloads=downloads,
+            gguf_variants=[
+                GGUFVariant(
+                    filename="model-Q4_K_M.gguf",
+                    quant_type="Q4_K_M",
+                    file_size_bytes=int(params * 0.5625),
+                ),
+            ],
+        )
+
+    first_family_low = rankable_model("trusted/A-low", "family-a", 2_000_000_000, 300)
+    tied_other_family = rankable_model("trusted/B", "family-b", 8_000_000_000, 200)
+    first_family_best = rankable_model("trusted/A-best", "family-a", 8_000_000_000, 100)
+
+    results = rank_models(
+        [first_family_low, tied_other_family, first_family_best],
+        make_hardware(bandwidth_gbps=900.0),
+        top_n=2,
+        benchmark_scores={
+            "trusted/A-low": 30.0,
+            "trusted/B": 70.0,
+            "trusted/A-best": 70.0,
+        },
+        require_direct_top=False,
+    )
+
+    assert [r.model.id for r in results] == ["trusted/B", "trusted/A-best"]
+
+
 def test_freshness_weight_can_disable_generation_score_delta():
     newer = ModelInfo(
         id="Qwen/Qwen3.6-8B",
@@ -411,14 +448,31 @@ def test_general_profile_excludes_specialized_models():
             ),
         ],
     )
+    ocr_model = ModelInfo(
+        id="org/DocVQA-OCR-7B",
+        family_id="docvqa-ocr-7b",
+        name="DocVQA-OCR-7B",
+        parameter_count=7_000_000_000,
+        downloads=1000,
+        likes=100,
+        capabilities=ModelCapabilities(image=True, ocr=True),
+        gguf_variants=[
+            GGUFVariant(
+                filename="c-Q4_K_M.gguf",
+                quant_type="Q4_K_M",
+                file_size_bytes=4_000_000_000,
+            ),
+        ],
+    )
     hw = make_hardware()
     results = rank_models(
-        [general_model, coding_model],
+        [general_model, coding_model, ocr_model],
         hw,
         top_n=10,
         benchmark_scores={
             "Qwen/Qwen2.5-7B-Instruct": 70.0,
             "Qwen/Qwen2.5-Coder-7B-Instruct": 75.0,
+            "org/DocVQA-OCR-7B": 80.0,
         },
         task_profile="general",
     )
@@ -624,7 +678,6 @@ def test_min_params_filter_excludes_small_models():
 
 
 def test_general_profile_prefers_full_gpu_when_direct_is_partial():
-
     partial_direct = ModelInfo(
         id="Qwen/Qwen2.5-72B-Instruct",
         family_id="qwen2.5-72b",
@@ -659,7 +712,6 @@ def test_general_profile_prefers_full_gpu_when_direct_is_partial():
 
 
 def test_family_dedup_prefers_direct_when_enabled():
-
     direct_base = ModelInfo(
         id="Qwen/Qwen2.5-7B-Instruct",
         family_id="qwen2.5-7b",
@@ -699,7 +751,6 @@ def test_family_dedup_prefers_direct_when_enabled():
 
 
 def test_full_gpu_estimated_ranks_above_partial_direct():
-
     partial_direct = ModelInfo(
         id="Qwen/Qwen2.5-72B-Instruct",
         family_id="qwen2.5-72b",
@@ -1117,7 +1168,7 @@ def test_fit_filter_full_gpu_returns_empty_when_no_full_gpu_candidate():
 
 
 def test_multi_gpu_speed_confidence_is_low():
-    from whichvlm.engine.performance import estimate_tok_per_sec
+    from engine.performance import estimate_tok_per_sec
 
     model = ModelInfo(
         id="org/Test-34B-GGUF",

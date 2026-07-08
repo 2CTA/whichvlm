@@ -1,4 +1,4 @@
-from whichvlm.models.benchmark import (
+from models.benchmark import (
     lineage_recency_factor,
     looks_like_vlm_id,
     build_line_bucket_index,

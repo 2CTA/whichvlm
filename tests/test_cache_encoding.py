@@ -3,14 +3,14 @@ from __future__ import annotations
 import json
 import time
 
-import whichvlm.models.benchmark as benchmark_mod
-import whichvlm.models.cache as cache_mod
+import models.benchmark as benchmark_mod
+import models.cache as cache_mod
 
 
 class ReadableCacheFile:
     def __init__(self, payload: dict):
         self.payload = payload
-        self.encoding = None
+        self.encoding: str | None = None
 
     def exists(self) -> bool:
         return True
@@ -22,8 +22,8 @@ class ReadableCacheFile:
 
 class WritableCacheFile:
     def __init__(self):
-        self.encoding = None
-        self.text = None
+        self.encoding: str | None = None
+        self.text: str | None = None
 
     def write_text(self, text: str, *, encoding: str | None = None) -> int:
         self.encoding = encoding

@@ -5,8 +5,8 @@ from io import StringIO
 
 from rich.console import Console
 
-from whichvlm.hardware import intel
-from whichvlm.hardware.types import GPUInfo, HardwareInfo
+from hardware import intel
+from hardware.types import GPUInfo, HardwareInfo
 
 
 def test_detect_intel_gpu_from_lspci(monkeypatch):
@@ -59,8 +59,8 @@ def test_detect_intel_gpu_from_sysfs_when_lspci_missing(monkeypatch, tmp_path):
 
 
 def test_display_intel_shared_memory_without_zero_kb(monkeypatch):
-    from whichvlm.output import console as console_mod
-    from whichvlm.output import display as display_mod
+    from output import console as console_mod
+    from output import display as display_mod
 
     buf = StringIO()
     monkeypatch.setattr(console_mod, "console", Console(file=buf, force_terminal=False))

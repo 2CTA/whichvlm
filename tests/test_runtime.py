@@ -1,9 +1,15 @@
 import pytest
 
-from whichvlm.models.fetcher import parse_model
-from whichvlm.models.types import GGUFVariant, ModelArtifact, ModelInfo
-from whichvlm.hardware.types import BackendCapability, GPUInfo, HardwareInfo
-from whichvlm.runtime import (
+from models.fetcher import parse_model
+from models.types import (
+    GGUFVariant,
+    ModelArtifact,
+    ModelCapabilities,
+    ModelComponent,
+    ModelInfo,
+)
+from hardware.types import BackendCapability, GPUInfo, HardwareInfo
+from runtime import (
     ServeRequest,
     RuntimeUnsupportedError,
     generate_run_script,
@@ -32,6 +38,39 @@ def test_vlm_runtime_requires_image():
     assert requires_image(model)
     with pytest.raises(RuntimeUnsupportedError, match="--image"):
         generate_run_script(model, None, 4096, False)
+
+
+def test_runtime_uses_cached_vision_capability():
+    model = ModelInfo(
+        id="Qwen/Qwen2-VL-7B",
+        family_id="qwen-vl",
+        name="Qwen2-VL-7B",
+        parameter_count=7_000_000_000,
+        capabilities=ModelCapabilities(image=True),
+    )
+
+    deps, script_type = resolve_model_deps(model, None)
+
+    assert requires_image(model)
+    assert "pillow" in deps
+    assert script_type == "transformers_vlm"
+
+
+def test_audio_processor_does_not_require_image():
+    model = ModelInfo(
+        id="org/Audio-7B",
+        family_id="audio-7b",
+        name="Audio-7B",
+        parameter_count=7_000_000_000,
+        capabilities=ModelCapabilities(audio=True),
+        components=[
+            ModelComponent(role="language", repo_id="org/Audio-7B"),
+            ModelComponent(role="audio_encoder", repo_id="org/Audio-7B"),
+            ModelComponent(role="processor", repo_id="org/Audio-7B"),
+        ],
+    )
+
+    assert not requires_image(model)
 
 
 def test_transformers_vlm_script_uses_processor_and_image_path():
@@ -91,8 +130,47 @@ def test_transformers_quantized_script_uses_bitsandbytes_loader():
     assert "bitsandbytes" in deps
     assert "BitsAndBytesConfig" in script
     assert 'model_kwargs["quantization_config"]' in script
-    assert "attn_implementation=\"sdpa\"" in script
+    assert 'attn_implementation="sdpa"' in script
     assert "max_memory=cuda_memory_limits()" in script
+
+
+def test_transformers_text_script_uses_inference_mode_and_joined_stream():
+    model = ModelInfo(
+        id="org/Test-7B",
+        family_id="test-7b",
+        name="Test-7B",
+        parameter_count=7_000_000_000,
+    )
+
+    script = generate_run_script(model, None, 4096, False)
+
+    assert "model.eval()" in script
+    assert "with torch.inference_mode():" in script
+    assert "output_parts.append(text)" in script
+    assert '"".join(output_parts)' in script
+    assert "full +=" not in script
+
+
+def test_llama_cpp_text_script_joins_streamed_response():
+    model = ModelInfo(
+        id="org/Test-7B-GGUF",
+        family_id="test-7b",
+        name="Test-7B-GGUF",
+        parameter_count=7_000_000_000,
+        gguf_variants=[
+            GGUFVariant(
+                filename="test-Q4_K_M.gguf",
+                quant_type="Q4_K_M",
+                file_size_bytes=4_000_000_000,
+            )
+        ],
+    )
+
+    script = generate_run_script(model, model.gguf_variants[0], 4096, False)
+
+    assert "output_parts.append(content)" in script
+    assert '"".join(output_parts)' in script
+    assert "full +=" not in script
 
 
 def test_generated_scripts_compile():
@@ -423,7 +501,7 @@ def test_vllm_serve_uses_openai_server_command(monkeypatch):
         captured["cmd"] = cmd
         return Result()
 
-    monkeypatch.setattr("whichvlm.runtime.subprocess.run", fake_run)
+    monkeypatch.setattr("runtime.subprocess.run", fake_run)
 
     code = serve_request(
         ServeRequest(

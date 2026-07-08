@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from whichvlm.engine.ranker import (
+from engine.ranker import (
     SOURCE_WEIGHTS,
     derivative_name_penalty,
     generation_bonus,
     is_excluded_model,
     rank_models,
 )
-from whichvlm.hardware.types import BackendCapability, GPUInfo, HardwareInfo
-from whichvlm.models.types import GGUFVariant, ModelArtifact, ModelInfo
+from hardware.types import BackendCapability, GPUInfo, HardwareInfo
+from models.types import GGUFVariant, ModelArtifact, ModelInfo
 
 
 def hw(
@@ -49,7 +49,6 @@ def gguf(quant: str, size_gb: float) -> GGUFVariant:
 
 
 def test_q1_0_only_repo_is_severely_penalized_when_no_quant_filter():
-
     weak_quant = ModelInfo(
         id="fixture-org/Weak-Quant-8B-GGUF",
         family_id="weak-quant-8b",
@@ -101,7 +100,6 @@ def test_q1_0_only_repo_is_severely_penalized_when_no_quant_filter():
 
 
 def test_q1_0_returned_when_explicitly_requested_via_quant_filter():
-
     model = ModelInfo(
         id="fixture-org/Weak-Quant-8B-GGUF",
         family_id="weak-quant-8b",
@@ -120,8 +118,7 @@ def test_q1_0_returned_when_explicitly_requested_via_quant_filter():
 
 
 def test_q1_q2_quality_penalty_is_severe():
-
-    from whichvlm.constants import QUANT_QUALITY_PENALTY
+    from data.quantization import QUANT_QUALITY_PENALTY
 
     assert QUANT_QUALITY_PENALTY["Q1_0"] >= 0.50
     assert QUANT_QUALITY_PENALTY["Q2_0"] >= 0.40
@@ -132,7 +129,6 @@ def test_q1_q2_quality_penalty_is_severe():
 
 
 def test_excluded_orgs_never_rank():
-
     gpt2 = ModelInfo(
         id="openai-community/gpt2",
         family_id="gpt2",
@@ -276,7 +272,6 @@ def test_civitai_benchmark_repo_ranks_below_provider_backed_converter():
 
 
 def test_self_reported_evidence_does_not_outrank_direct_leaderboard():
-
     self_reported = ModelInfo(
         id="fixture-org/Self-Reported-8B",
         family_id="self-reported-8b",
@@ -331,7 +326,6 @@ def test_self_reported_outranks_only_when_there_is_nothing_else():
 
 
 def test_source_weights_ordering():
-
     assert SOURCE_WEIGHTS["direct"] > SOURCE_WEIGHTS["base_model"]
     assert SOURCE_WEIGHTS["base_model"] > SOURCE_WEIGHTS["variant"]
     assert SOURCE_WEIGHTS["variant"] > SOURCE_WEIGHTS["line_interp"]
@@ -508,7 +502,6 @@ def test_gated_artifact_ranks_below_available_peer():
 
 
 def test_strict_evidence_filter_excludes_self_reported():
-
     self_reported = ModelInfo(
         id="some-org/Self-Reported-8B",
         family_id="sr-8b",
@@ -538,7 +531,6 @@ def test_strict_evidence_filter_excludes_self_reported():
 
 
 def test_official_org_safetensors_gets_q4km_synthesis():
-
     model = ModelInfo(
         id="Qwen/Qwen3.6-27B",
         family_id="qwen3.6-27b",
@@ -568,7 +560,6 @@ def test_official_org_safetensors_gets_q4km_synthesis():
 
 
 def test_prequantized_repo_skips_synthesis():
-
     model = ModelInfo(
         id="Qwen/Qwen2.5-14B-Instruct-AWQ",
         family_id="qwen2.5-14b-awq",
@@ -587,7 +578,6 @@ def test_prequantized_repo_skips_synthesis():
 
 
 def test_newer_generation_beats_older_at_same_size():
-
     new_gen = ModelInfo(
         id="Qwen/Qwen3-8B",
         family_id="qwen3-8b",
@@ -617,9 +607,8 @@ def test_newer_generation_beats_older_at_same_size():
 
 
 def test_speed_estimator_differs_by_quant_and_backend():
-
-    from whichvlm.engine.performance import estimate_tok_per_sec
-    from whichvlm.hardware.types import GPUInfo
+    from engine.performance import estimate_tok_per_sec
+    from hardware.types import GPUInfo
 
     model = ModelInfo(
         id="t/x",
@@ -654,11 +643,11 @@ def test_speed_estimator_differs_by_quant_and_backend():
 
 
 def test_vlm_speed_estimate_is_discounted_for_image_prefill():
-    from whichvlm.engine.performance import (
+    from engine.performance import (
         estimate_speed_uncertainty,
         estimate_tok_per_sec,
     )
-    from whichvlm.hardware.types import GPUInfo
+    from hardware.types import GPUInfo
 
     text = ModelInfo(
         id="Qwen/Qwen2.5-7B-Instruct",
@@ -698,8 +687,7 @@ def test_vlm_speed_estimate_is_discounted_for_image_prefill():
 
 
 def test_vram_kv_cache_scales_with_context():
-
-    from whichvlm.engine.vram import estimate_kv_cache
+    from engine.vram import estimate_kv_cache
 
     model = ModelInfo(
         id="t/x",

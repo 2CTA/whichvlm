@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 def detection(args: argparse.Namespace) -> None:
-    from whichvlm.hardware.detector import detect_hardware
+    from hardware.detector import detect_hardware
 
     durations: list[float] = []
     snapshots = []
@@ -32,7 +32,9 @@ def detection(args: argparse.Namespace) -> None:
         backends = available_backends(hw)
         expected = args.expect_backend.lower()
         if expected not in backends:
-            raise SystemExit(f"expected backend {expected!r}, detected {sorted(backends)}")
+            raise SystemExit(
+                f"expected backend {expected!r}, detected {sorted(backends)}"
+            )
 
     print(
         f"detection median={median_seconds:.2f}s "
@@ -54,7 +56,9 @@ def image_data_url(path: Path) -> str:
     return f"data:{mime};base64,{encoded}"
 
 
-def llama_cpp_handler(llama_chat_format, model_id: str, mmproj_path: str, handler: str | None):
+def llama_cpp_handler(
+    llama_chat_format, model_id: str, mmproj_path: str, handler: str | None
+):
     if handler:
         names = [handler]
     else:
@@ -85,9 +89,7 @@ def gguf_mmproj(args: argparse.Namespace) -> None:
 
     model_path = hf_hub_download(repo_id=args.repo, filename=args.model_file)
     mmproj_path = hf_hub_download(repo_id=args.repo, filename=args.mmproj_file)
-    handler = llama_cpp_handler(
-        llama_chat_format, args.repo, mmproj_path, args.handler
-    )
+    handler = llama_cpp_handler(llama_chat_format, args.repo, mmproj_path, args.handler)
 
     start_load = time.perf_counter()
     llm = Llama(
