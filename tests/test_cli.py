@@ -1360,6 +1360,7 @@ def json_output_case() -> tuple[CompatibilityResult, HardwareInfo]:
         benchmark_status="estimated",
         benchmark_source="line_interp",
         benchmark_confidence=0.34,
+        ranking_evidence="benchmark score",
     )
     hw = HardwareInfo(
         gpus=[],
@@ -1382,6 +1383,7 @@ def test_json_output_defaults_to_compact():
     assert compact_entry["model_id"] == "test-org/Test-7B"
     assert compact_entry["recommended_runtime_backend"] is None
     assert compact_entry["benchmark_source"] == "line_interp"
+    assert compact_entry["ranking_evidence"] == "benchmark score"
     assert compact_entry["vram_required_range_bytes"] == [
         7_000_000_000,
         10_000_000_000,

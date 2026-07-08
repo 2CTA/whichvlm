@@ -105,11 +105,11 @@ def test_display_markdown_runtime_table_top_three():
 
     assert output.startswith("## Recommended Models")
     assert (
-        "| # | Model | Params | Quant | Fit | VRAM | Speed | Published | Score | License |"
+        "| # | Model | Params | Quant | Fit | VRAM | Speed | Published | Score | Evidence | License |"
         in output
     )
     assert (
-        "| 1 | org/Test-1\\|Model | 7.0B | Q4_K_M | Full GPU | 5.0 GB | 10.0 tok/s ~ | 2026-01-01 | 79.0 | apache-2.0 |"
+        "| 1 | org/Test-1\\|Model | 7.0B | Q4_K_M | Full GPU | 5.0 GB | 10.0 tok/s ~ | 2026-01-01 | 79.0 | fit quality | apache-2.0 |"
         in output
     )
     assert "20.0 tok/s ?" in output
@@ -123,12 +123,12 @@ def test_display_markdown_details_table_uses_metadata_columns():
     )
 
     assert (
-        "| # | Model | Params | Quant | Published | Downloads | Score | License |"
+        "| # | Model | Params | Quant | Published | Downloads | Score | Evidence | License |"
         in output
     )
     assert "Fit | VRAM | Speed" not in output
     assert (
-        "| 1 | org/Test-1\\|Model | 7.0B | Q4_K_M | 2026-01-01 | 1.5K | 79.0 | apache-2.0 |"
+        "| 1 | org/Test-1\\|Model | 7.0B | Q4_K_M | 2026-01-01 | 1.5K | 79.0 | fit quality | apache-2.0 |"
         in output
     )
 

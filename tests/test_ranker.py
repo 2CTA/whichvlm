@@ -1259,6 +1259,7 @@ def test_benchmark_source_and_confidence_exposed_for_direct():
     assert results[0].benchmark_status == "direct"
     assert results[0].benchmark_source == "direct"
     assert results[0].benchmark_confidence == 1.0
+    assert results[0].ranking_evidence == "benchmark score"
 
 
 def test_benchmark_source_and_confidence_exposed_for_estimated():
@@ -1289,6 +1290,7 @@ def test_benchmark_source_and_confidence_exposed_for_estimated():
     assert results[0].benchmark_status == "estimated"
     assert results[0].benchmark_source == "line_interp"
     assert 0.0 < results[0].benchmark_confidence < 1.0
+    assert results[0].ranking_evidence == "benchmark score"
 
 
 def test_benchmark_source_and_confidence_exposed_for_self_reported():
@@ -1320,6 +1322,7 @@ def test_benchmark_source_and_confidence_exposed_for_self_reported():
     assert results[0].benchmark_status == "self_reported"
     assert results[0].benchmark_source == "self_reported"
     assert results[0].benchmark_confidence > 0.0
+    assert results[0].ranking_evidence == "benchmark score"
 
 
 def test_benchmark_source_and_confidence_exposed_for_none():
@@ -1350,6 +1353,7 @@ def test_benchmark_source_and_confidence_exposed_for_none():
     assert results[0].benchmark_status == "none"
     assert results[0].benchmark_source == "none"
     assert results[0].benchmark_confidence == 0.0
+    assert results[0].ranking_evidence == "quantized artifact"
 
 
 def test_ctx_penalty_demotes_non_fitting():

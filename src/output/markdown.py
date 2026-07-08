@@ -99,6 +99,7 @@ def display_markdown(
             "Speed",
             "Published",
             "Score",
+            "Evidence",
             "License",
         ]
         rows = [
@@ -112,6 +113,7 @@ def display_markdown(
                 format_markdown_speed(result),
                 format_published_at(result.model.published_at),
                 format_markdown_score(result),
+                result.ranking_evidence,
                 result.model.license or "-",
             ]
             for index, result in enumerate(results, 1)
@@ -125,6 +127,7 @@ def display_markdown(
             "Published",
             "Downloads",
             "Score",
+            "Evidence",
             "License",
         ]
         rows = [
@@ -136,6 +139,7 @@ def display_markdown(
                 format_published_at(result.model.published_at),
                 format_downloads(result.model.downloads),
                 format_markdown_score(result),
+                result.ranking_evidence,
                 result.model.license or "-",
             ]
             for index, result in enumerate(results, 1)

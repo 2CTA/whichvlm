@@ -142,6 +142,7 @@ def model_dict(
         "estimated_tok_per_sec": result.estimated_tok_per_sec,
         "benchmark_status": result.benchmark_status,
         "benchmark_source": result.benchmark_source,
+        "ranking_evidence": result.ranking_evidence,
         "fit_type": result.fit_type,
         "can_run": result.can_run,
         "context_fits": result.context_fits,

@@ -20,7 +20,12 @@ from engine.quantization import (
     infer_non_gguf_quant_type,
     quant_quality_penalty,
 )
-from engine.types import BenchmarkSource, BenchmarkStatus, CompatibilityResult
+from engine.types import (
+    BenchmarkSource,
+    BenchmarkStatus,
+    CompatibilityResult,
+    RankingEvidence,
+)
 from engine.workload import Workload, WorkloadTask
 from hardware.types import (
     GPUInfo,
@@ -721,6 +726,31 @@ def task_evidence_adjustment(benchmark_source: str, task_profile: str) -> float:
     return 0.0
 
 
+def ranking_evidence_label(
+    model: ModelInfo,
+    variant: GGUFVariant | None,
+    tok_per_sec: float,
+    benchmark_source: str,
+    freshness_weight: float,
+    workload: Workload | None,
+) -> RankingEvidence:
+    if benchmark_source != "none":
+        return "benchmark score"
+    if workload is not None and (
+        supports_workload(model.capabilities, workload)
+        or name_matches_workload(model, workload)
+    ):
+        return "task match"
+    quant = effective_quant_type(model, variant).upper()
+    if variant is not None or quant not in {"", "UNKNOWN", "FP16", "BF16"}:
+        return "quantized artifact"
+    if generation_bonus(model.id) * freshness_weight > 0:
+        return "freshness"
+    if tok_per_sec >= 10.0:
+        return "speed"
+    return "fit quality"
+
+
 def artifact_access_penalty(model: ModelInfo) -> float:
     if model.access.lower() in RESTRICTED_ACCESS:
         return -4.0
@@ -1070,6 +1100,14 @@ def rank_models(
             compat.benchmark_status = status
             compat.benchmark_source = cast(BenchmarkSource, bench_evidence.source)
             compat.benchmark_confidence = bench_evidence.confidence
+            compat.ranking_evidence = ranking_evidence_label(
+                model,
+                variant,
+                tok_per_sec,
+                bench_evidence.source,
+                applied_freshness_weight,
+                workload,
+            )
 
             if (
                 best_for_model is None

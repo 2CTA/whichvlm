@@ -17,6 +17,14 @@ BenchmarkSource = Literal[
     "self_reported",
     "none",
 ]
+RankingEvidence = Literal[
+    "benchmark score",
+    "freshness",
+    "quantized artifact",
+    "fit quality",
+    "speed",
+    "task match",
+]
 
 
 @dataclass
@@ -41,6 +49,7 @@ class CompatibilityResult:
     benchmark_status: BenchmarkStatus = "none"
     benchmark_source: BenchmarkSource = "none"
     benchmark_confidence: float = 0.0
+    ranking_evidence: RankingEvidence = "fit quality"
     ranking_freshness_weight: float = 1.0
     context_fits: bool = True
     uses_multi_gpu: bool = False
