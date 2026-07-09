@@ -1,6 +1,7 @@
 from engine.quantization import effective_quant_type
 from engine.ranker import (
     detect_specializations,
+    matches_profile,
     partial_offload_quality_factor,
     rank_models,
 )
@@ -558,6 +559,22 @@ def test_video_workload_does_not_inherit_generic_benchmark_scores():
     )
 
     assert results[0].benchmark_source == "none"
+
+
+def test_video_only_model_does_not_match_image_profile():
+    model = ModelInfo(
+        id="org/Video-7B",
+        family_id="video-7b",
+        name="Video-7B",
+        parameter_count=7_000_000_000,
+        hf_pipeline_tag="video-text-to-text",
+        capabilities=ModelCapabilities(video=True),
+    )
+    image_workload = Workload(task="image_qa", context_length=4096, image_count=1)
+    video_workload = Workload(task="video", context_length=4096, video_frames=8)
+
+    assert not matches_profile(model, "vision", image_workload)
+    assert matches_profile(model, "video", video_workload)
 
 
 def test_audio_workload_does_not_inherit_generic_benchmark_scores():

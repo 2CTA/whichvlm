@@ -17,15 +17,20 @@ class IntegrationProfile:
     runtime_backends: tuple[str, ...]
 
 
+IMAGE_PIPELINE_TAGS = (
+    "image-text-to-text",
+    "visual-question-answering",
+    "image-to-text",
+)
+VIDEO_PIPELINE_TAGS = ("video-text-to-text",)
+AUDIO_PIPELINE_TAGS = ("audio-text-to-text", "automatic-speech-recognition")
+IMAGE_RUNTIME_BACKENDS = ("transformers", "llama.cpp", "mlx", "vllm", "sglang")
+
 INTEGRATION_PROFILES: tuple[IntegrationProfile, ...] = (
     IntegrationProfile(
         integration_id="vision-language",
         capability_names=("image",),
-        pipeline_tags=(
-            "image-text-to-text",
-            "visual-question-answering",
-            "image-to-text",
-        ),
+        pipeline_tags=IMAGE_PIPELINE_TAGS,
         tag_patterns=(
             r"(^|[-_/\s])(vl|vision|multimodal|llava|image)([-_/\s]|$)",
             r"image-text-to-text|visual-question-answering|image-to-text",
@@ -35,7 +40,7 @@ INTEGRATION_PROFILES: tuple[IntegrationProfile, ...] = (
         ),
         component_roles=("language", "vision_encoder", "projector", "processor"),
         workload_tasks=("image_qa", "general_multimodal"),
-        runtime_backends=("transformers", "llama.cpp", "mlx", "vllm", "sglang"),
+        runtime_backends=IMAGE_RUNTIME_BACKENDS,
     ),
     IntegrationProfile(
         integration_id="document-ocr",
@@ -47,14 +52,45 @@ INTEGRATION_PROFILES: tuple[IntegrationProfile, ...] = (
         ),
         component_roles=("language", "vision_encoder", "projector", "processor"),
         workload_tasks=("ocr", "document"),
-        runtime_backends=("transformers", "llama.cpp", "mlx", "vllm", "sglang"),
+        runtime_backends=IMAGE_RUNTIME_BACKENDS,
+    ),
+    IntegrationProfile(
+        integration_id="chart-document",
+        capability_names=("chart",),
+        pipeline_tags=(),
+        tag_patterns=(r"(^|[-_/\s])(chartqa|chart|plotqa|figureqa|table)([-_/\s]|$)",),
+        component_roles=("language", "vision_encoder", "projector", "processor"),
+        workload_tasks=("chart",),
+        runtime_backends=IMAGE_RUNTIME_BACKENDS,
+    ),
+    IntegrationProfile(
+        integration_id="video-language",
+        capability_names=("video",),
+        pipeline_tags=VIDEO_PIPELINE_TAGS,
+        tag_patterns=(
+            r"(^|[-_/\s])(video|videomme|mvbench|activitynet|nextqa)([-_/\s]|$)",
+            r"onevision",
+        ),
+        component_roles=("language", "video_encoder", "projector", "processor"),
+        workload_tasks=("video",),
+        runtime_backends=(),
+    ),
+    IntegrationProfile(
+        integration_id="audio-language",
+        capability_names=("audio",),
+        pipeline_tags=("audio-text-to-text",),
+        tag_patterns=(
+            r"(^|[-_/\s])(audio|speech|voice|spoken|asr|whisper)([-_/\s]|$)",
+            r"audio-text-to-text|automatic-speech-recognition",
+        ),
+        component_roles=("language", "audio_encoder", "processor"),
+        workload_tasks=("audio",),
+        runtime_backends=(),
     ),
 )
 
 VISUAL_COMPONENT_ROLES = frozenset({"vision_encoder", "video_encoder", "projector"})
 AUDIO_COMPONENT_ROLES = frozenset({"audio_encoder"})
-VIDEO_PIPELINE_TAGS = ("video-text-to-text",)
-AUDIO_PIPELINE_TAGS = ("audio-text-to-text", "automatic-speech-recognition")
 
 
 def _append_unique(values: list[str], candidates: tuple[str, ...]) -> None:
@@ -184,14 +220,14 @@ def pipeline_tags_for_capabilities(capabilities: tuple[str, ...]) -> tuple[str, 
 
 def discovery_pipeline_tags() -> tuple[str, ...]:
     tags = list(pipeline_tags_for_capabilities(("image",)))
-    _append_unique(tags, VIDEO_PIPELINE_TAGS)
-    _append_unique(tags, ("audio-text-to-text",))
+    _append_unique(tags, pipeline_tags_for_capabilities(("video",)))
+    _append_unique(tags, pipeline_tags_for_capabilities(("audio",)))
     return tuple(tags)
 
 
 def specialization_tags_for_capabilities(capabilities: ModelCapabilities) -> set[str]:
     tags: set[str] = set()
-    if capabilities.image or capabilities.video:
+    if capabilities.image:
         tags.add("vision")
     if capabilities.ocr:
         tags.add("ocr")
@@ -230,6 +266,10 @@ def pipeline_tag_has_visual_input(pipeline_tag: object) -> bool:
         *pipeline_tags_for_capabilities(("image",)),
         *VIDEO_PIPELINE_TAGS,
     }
+
+
+def pipeline_tag_has_image_input(pipeline_tag: object) -> bool:
+    return pipeline_tag in set(pipeline_tags_for_capabilities(("image",)))
 
 
 def pipeline_tag_has_audio_input(pipeline_tag: object) -> bool:

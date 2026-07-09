@@ -40,7 +40,6 @@ from models.benchmark import (
     lookup_benchmark_evidence,
 )
 from models.integrations import (
-    VISUAL_COMPONENT_ROLES,
     specialization_tags_for_capabilities,
     specialization_tags_for_data,
 )
@@ -464,7 +463,7 @@ def detect_specializations(model: ModelInfo) -> set[str]:
             model.architecture,
         )
     )
-    if any(component.role in VISUAL_COMPONENT_ROLES for component in model.components):
+    if any(component.role == "vision_encoder" for component in model.components):
         tags.add("vision")
     if re.search(r"(^|[-_/])math([-_/]|$)", lower):
         tags.add("math")

@@ -1,6 +1,6 @@
 import pytest
 
-from engine.ranker import rank_models
+from engine.ranker import PROFILE_TO_WORKLOAD_TASK, detect_specializations, rank_models
 from engine.vram import estimate_vram
 from engine.workload import Workload
 from hardware.types import BackendCapability, GPUInfo, HardwareInfo
@@ -37,7 +37,16 @@ def test_registered_profiles_define_complete_contract():
         assert profile.pipeline_tags or profile.tag_patterns
         assert profile.component_roles
         assert profile.workload_tasks
-        assert profile.runtime_backends
+        if not set(profile.capability_names) & {"video", "audio"}:
+            assert profile.runtime_backends
+
+
+def test_registered_profiles_cover_ranker_workloads():
+    registered_tasks = {
+        task for profile in INTEGRATION_PROFILES for task in profile.workload_tasks
+    }
+
+    assert set(PROFILE_TO_WORKLOAD_TASK.values()) <= registered_tasks
 
 
 def test_plain_image_to_text_is_not_document_ocr():
@@ -50,6 +59,101 @@ def test_plain_image_to_text_is_not_document_ocr():
     assert capabilities.image is True
     assert capabilities.ocr is False
     assert capabilities.document is False
+
+
+@pytest.mark.parametrize(
+    ("model_id", "pipeline_tag", "tags", "expected"),
+    [
+        ("org/VideoChat-7B", "video-text-to-text", ["safetensors"], {"video"}),
+        ("org/AudioChat-7B", "audio-text-to-text", ["safetensors"], {"audio"}),
+        ("org/Whisper-7B", "automatic-speech-recognition", [], {"audio"}),
+        (
+            "org/ChartQA-7B",
+            "image-text-to-text",
+            ["chartqa", "safetensors"],
+            {"image", "chart"},
+        ),
+    ],
+)
+def test_registry_classifies_media_profiles(
+    model_id: str,
+    pipeline_tag: str,
+    tags: list[str],
+    expected: set[str],
+):
+    capabilities = capabilities_for_data(model_id, pipeline_tag, tags)
+
+    enabled = {
+        name
+        for name in ("image", "video", "audio", "ocr", "document", "chart")
+        if getattr(capabilities, name)
+    }
+    assert expected <= enabled
+
+
+def test_parse_model_uses_registered_video_profile_without_image_runtime():
+    model = parse_model(
+        {
+            "id": "org/VideoChat-7B",
+            "pipeline_tag": "video-text-to-text",
+            "tags": ["safetensors"],
+            "config": {"architectures": ["VideoChatForConditionalGeneration"]},
+            "safetensors": {"total": 7_000_000_000},
+            "siblings": [],
+            "cardData": {},
+        }
+    )
+
+    assert model is not None
+    assert model.capabilities.video is True
+    assert model.capabilities.image is False
+    assert "video-language" in integration_ids_for_capabilities(model.capabilities)
+    assert "video" in detect_specializations(model)
+    assert "vision" not in detect_specializations(model)
+    assert "video_encoder" in {component.role for component in model.components}
+    assert runtime_backends_for_capabilities(model.capabilities) == []
+
+
+def test_parse_model_uses_registered_audio_profile_without_runtime_claim():
+    model = parse_model(
+        {
+            "id": "org/AudioChat-7B",
+            "pipeline_tag": "audio-text-to-text",
+            "tags": ["safetensors"],
+            "config": {"architectures": ["AudioChatForConditionalGeneration"]},
+            "safetensors": {"total": 7_000_000_000},
+            "siblings": [],
+            "cardData": {},
+        }
+    )
+
+    assert model is not None
+    assert model.capabilities.audio is True
+    assert "audio-language" in integration_ids_for_capabilities(model.capabilities)
+    assert "audio" in detect_specializations(model)
+    assert "audio_encoder" in {component.role for component in model.components}
+    assert runtime_backends_for_capabilities(model.capabilities) == []
+
+
+def test_parse_model_uses_registered_chart_profile_with_image_runtime():
+    model = parse_model(
+        {
+            "id": "org/ChartQA-7B",
+            "pipeline_tag": "image-text-to-text",
+            "tags": ["chartqa", "safetensors"],
+            "config": {"architectures": ["Qwen2VLForConditionalGeneration"]},
+            "safetensors": {"total": 7_000_000_000},
+            "siblings": [],
+            "cardData": {},
+        }
+    )
+
+    assert model is not None
+    assert model.capabilities.image is True
+    assert model.capabilities.chart is True
+    assert "chart-document" in integration_ids_for_capabilities(model.capabilities)
+    assert "chart" in detect_specializations(model)
+    assert "transformers" in runtime_backends_for_capabilities(model.capabilities)
 
 
 @pytest.mark.parametrize(

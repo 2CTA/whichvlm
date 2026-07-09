@@ -553,6 +553,9 @@ def test_inventory_discovery_uses_registered_vision_pipelines():
         "visual-question-answering",
         "image-to-text",
     ]
+    assert "video-text-to-text" in provenance["pipeline_tags"]
+    assert "audio-text-to-text" in provenance["pipeline_tags"]
+    assert "automatic-speech-recognition" not in provenance["pipeline_tags"]
 
 
 def test_parse_model_extracts_architecture_metadata():

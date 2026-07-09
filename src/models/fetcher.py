@@ -315,8 +315,6 @@ def infer_model_capabilities(
 
     if ocr or document or chart:
         image = True
-    if video:
-        image = True
 
     registry_caps = capabilities_for_data(
         model_id,

@@ -11,9 +11,10 @@ from data.vlm_inventory import canonical_vlm_family_id
 from engine.quantization import infer_non_gguf_quant_type
 from hardware.types import HardwareInfo, infer_backend_capabilities
 from models.integrations import (
-    VISUAL_COMPONENT_ROLES,
+    AUDIO_COMPONENT_ROLES,
     capabilities_for_data,
-    has_visual_input,
+    pipeline_tag_has_audio_input,
+    pipeline_tag_has_image_input,
     pipeline_tag_has_visual_input,
 )
 from models.package_graph import is_projector_filename
@@ -263,7 +264,7 @@ def matrix_supports(
 
 
 def is_vlm_model(model: ModelInfo) -> bool:
-    if has_visual_input(model.capabilities):
+    if model.capabilities.image:
         return True
     if capabilities_for_data(
         model.id,
@@ -272,10 +273,31 @@ def is_vlm_model(model: ModelInfo) -> bool:
         model.architecture,
     ).image:
         return True
+    if pipeline_tag_has_image_input(model.hf_pipeline_tag):
+        return True
+    return any(component.role == "vision_encoder" for component in model.components)
+
+
+def is_media_only_model(model: ModelInfo) -> bool:
+    if is_vlm_model(model):
+        return False
+    inferred = capabilities_for_data(
+        model.id,
+        model.hf_pipeline_tag,
+        model.tags,
+        model.architecture,
+    )
+    if model.capabilities.video or model.capabilities.audio:
+        return True
+    if inferred.video or inferred.audio:
+        return True
     if pipeline_tag_has_visual_input(model.hf_pipeline_tag):
         return True
+    if pipeline_tag_has_audio_input(model.hf_pipeline_tag):
+        return True
     return any(
-        component.role in VISUAL_COMPONENT_ROLES for component in model.components
+        component.role == "video_encoder" or component.role in AUDIO_COMPONENT_ROLES
+        for component in model.components
     )
 
 
@@ -581,6 +603,8 @@ class LlamaCppBackend(Backend):
         artifact: GGUFVariant | None,
         hardware: HardwareInfo | None,
     ) -> bool:
+        if is_media_only_model(model):
+            return False
         return artifact is not None and matrix_supports(
             self.name, model, artifact, hardware
         )
@@ -673,6 +697,8 @@ class MLXBackend(Backend):
         artifact: GGUFVariant | None,
         hardware: HardwareInfo | None,
     ) -> bool:
+        if is_media_only_model(model):
+            return False
         return artifact is None and matrix_supports(
             self.name, model, artifact, hardware
         )
@@ -701,6 +727,8 @@ class TransformersBackend(Backend):
         artifact: GGUFVariant | None,
         hardware: HardwareInfo | None,
     ) -> bool:
+        if is_media_only_model(model):
+            return False
         if artifact is not None or is_mlx_model(model):
             return False
         if not is_vlm_model(model):

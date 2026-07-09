@@ -75,6 +75,47 @@ def test_audio_processor_does_not_require_image():
     assert not requires_image(model)
 
 
+def test_audio_only_model_is_not_claimed_runnable():
+    model = ModelInfo(
+        id="org/Audio-7B",
+        family_id="audio-7b",
+        name="Audio-7B",
+        parameter_count=7_000_000_000,
+        hf_pipeline_tag="audio-text-to-text",
+        capabilities=ModelCapabilities(audio=True),
+        components=[
+            ModelComponent(role="language", repo_id="org/Audio-7B"),
+            ModelComponent(role="audio_encoder", repo_id="org/Audio-7B"),
+            ModelComponent(role="processor", repo_id="org/Audio-7B"),
+        ],
+    )
+
+    assert recommended_runtime_backend(model, None, linux_cuda_hardware()) is None
+    with pytest.raises(RuntimeUnsupportedError, match="No supported run backend"):
+        generate_run_script(model, None, 4096, False)
+
+
+def test_video_only_model_is_not_treated_as_image_vlm():
+    model = ModelInfo(
+        id="org/Video-7B",
+        family_id="video-7b",
+        name="Video-7B",
+        parameter_count=7_000_000_000,
+        hf_pipeline_tag="video-text-to-text",
+        capabilities=ModelCapabilities(video=True),
+        components=[
+            ModelComponent(role="language", repo_id="org/Video-7B"),
+            ModelComponent(role="video_encoder", repo_id="org/Video-7B"),
+            ModelComponent(role="processor", repo_id="org/Video-7B"),
+        ],
+    )
+
+    assert not requires_image(model)
+    assert recommended_runtime_backend(model, None, linux_cuda_hardware()) is None
+    with pytest.raises(RuntimeUnsupportedError, match="No supported run backend"):
+        generate_run_script(model, None, 4096, False, image_path="/tmp/image.png")
+
+
 def test_transformers_vlm_script_uses_processor_and_image_path():
     model = vlm_model()
 
