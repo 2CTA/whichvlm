@@ -77,7 +77,7 @@ uv run whichvlm snippet Qwen/Qwen2.5-VL-7B-Instruct --image ./image.jpg --contex
 For vLLM and SGLang, derive backend memory utilization from the same reserve:
 
 ```bash
-uv run whichvlm run Qwen/Qwen2.5-VL-7B-Instruct --backend vllm --gpu-memory-utilization auto --perf-vram 10% --image ./image.jpg
+uv run whichvlm run Qwen/Qwen2.5-VL-7B-Instruct --backend vllm --perf-vram 10% --image ./image.jpg
 uv run whichvlm serve Qwen/Qwen2.5-VL-7B-Instruct --backend sglang --gpu-memory-utilization 0.82
 ```
 

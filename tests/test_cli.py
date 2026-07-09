@@ -17,6 +17,7 @@ import output.console as console_mod
 from hardware.budget import auto_vram_headroom
 from cli import (
     apply_memory_budgets,
+    apply_runtime_memory_budget,
     apply_gpu_overrides,
     auto_min_params_for_profile,
     fill_missing_published_at,
@@ -40,7 +41,7 @@ from cli import (
 from runtime import generate_run_script
 from utils import current_version
 from engine.types import CompatibilityResult
-from hardware.types import BackendCapability, GPUInfo, HardwareInfo, has_backend
+from hardware.types import GPUInfo, HardwareInfo, has_backend
 from models.types import GGUFVariant, ModelArtifact, ModelInfo
 from output.display import display_json
 
@@ -380,6 +381,14 @@ def test_apply_memory_budgets_reserves_perf_vram():
     assert any("Performance reserve" in note for note in hw.budget_notes)
 
 
+def test_runtime_memory_budget_default_is_noop():
+    hw = hw_with_gpu(24)
+
+    apply_runtime_memory_budget(hw, None, "none")
+
+    assert hw.gpus[0].usable_vram_bytes is None
+
+
 def test_apply_memory_budgets_validates_vram_headroom_without_gpus():
     hw = HardwareInfo(gpus=[], ram_bytes=16 * 1024**3)
 
@@ -406,7 +415,17 @@ def test_apply_memory_budgets_accepts_valid_noop_vram_headroom_without_gpus():
 
 
 def test_gpu_memory_utilization_validation():
+    hw = hw_with_gpu(24)
+    apply_memory_budgets(hw, vram_headroom="auto", perf_vram="10%", ram_budget=None)
+
     assert resolve_gpu_memory_utilization("0.82", None) == 0.82
+    assert (
+        resolve_runtime_gpu_memory_utilization(None, hw_with_gpu(24), "vllm", "none")
+        is None
+    )
+    assert resolve_runtime_gpu_memory_utilization(
+        None, hw, "vllm", "10%"
+    ) == pytest.approx(0.85)
     with pytest.raises(Exit):
         resolve_gpu_memory_utilization("nope", hw_with_gpu(24))
     with pytest.raises(Exit):
@@ -840,6 +859,16 @@ def make_model(model_id="org/Test-7B-GGUF", downloads=100, gguf_variants=None):
         downloads=downloads,
         likes=10,
         gguf_variants=gguf_variants or [],
+    )
+
+
+def make_vlm_model(model_id="Qwen/Qwen2.5-VL-7B-Instruct"):
+    return ModelInfo(
+        id=model_id,
+        family_id="qwen-vl",
+        name="Qwen2.5-VL-7B-Instruct",
+        parameter_count=7_000_000_000,
+        hf_pipeline_tag="image-text-to-text",
     )
 
 
@@ -1279,25 +1308,41 @@ def test_serve_gguf_model_uses_server_request(monkeypatch):
     assert captured["port"] == 9000
 
 
-def test_serve_vllm_auto_gpu_memory_utilization_uses_perf_budget(monkeypatch):
-    model = ModelInfo(
-        id="Qwen/Qwen2.5-VL-7B-Instruct",
-        family_id="qwen-vl",
-        name="Qwen2.5-VL-7B-Instruct",
-        parameter_count=7_000_000_000,
-        hf_pipeline_tag="image-text-to-text",
-    )
-    hardware = HardwareInfo(
-        os="linux",
-        gpus=[
-            GPUInfo(
-                name="RTX 4090",
-                vendor="nvidia",
-                vram_bytes=24 * 1024**3,
-                backend_capabilities=[BackendCapability("cuda", True)],
-            )
+def test_run_vllm_perf_budget_sets_gpu_memory_utilization(monkeypatch):
+    model = make_vlm_model()
+    captured: dict[str, object] = {}
+
+    def fake_run_request(request, backend_name=None):
+        captured["gpu_memory_utilization"] = request.gpu_memory_utilization
+        captured["backend_name"] = backend_name
+        return 0
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/uv")
+    monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [model])
+    monkeypatch.setattr("hardware.detector.detect_hardware", lambda: hw_with_gpu(24))
+    monkeypatch.setattr(cli_mod, "run_request", fake_run_request)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "Qwen/Qwen2.5-VL-7B-Instruct",
+            "--backend",
+            "vllm",
+            "--image",
+            "/tmp/image.png",
+            "--perf-vram",
+            "10%",
         ],
     )
+
+    assert result.exit_code == 0
+    assert captured["backend_name"] == "vllm"
+    assert captured["gpu_memory_utilization"] == pytest.approx(0.85)
+
+
+def test_serve_sglang_perf_budget_sets_gpu_memory_utilization(monkeypatch):
+    model = make_vlm_model()
     captured: dict[str, object] = {}
 
     def fake_serve_request(request, backend_name=None):
@@ -1307,7 +1352,7 @@ def test_serve_vllm_auto_gpu_memory_utilization_uses_perf_budget(monkeypatch):
 
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/uv")
     monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [model])
-    monkeypatch.setattr("hardware.detector.detect_hardware", lambda: hardware)
+    monkeypatch.setattr("hardware.detector.detect_hardware", lambda: hw_with_gpu(24))
     monkeypatch.setattr(cli_mod, "serve_request", fake_serve_request)
 
     result = CliRunner().invoke(
@@ -1316,16 +1361,14 @@ def test_serve_vllm_auto_gpu_memory_utilization_uses_perf_budget(monkeypatch):
             "serve",
             "Qwen/Qwen2.5-VL-7B-Instruct",
             "--backend",
-            "vllm",
-            "--gpu-memory-utilization",
-            "auto",
+            "sglang",
             "--perf-vram",
             "10%",
         ],
     )
 
     assert result.exit_code == 0
-    assert captured["backend_name"] == "vllm"
+    assert captured["backend_name"] == "sglang"
     assert captured["gpu_memory_utilization"] == pytest.approx(0.85)
 
 
@@ -1374,6 +1417,59 @@ def test_snippet_passes_context_length_and_max_tokens(monkeypatch):
     assert result.exit_code == 0
     assert captured["context_length"] == 8192
     assert captured["max_tokens"] == 128
+
+
+@pytest.mark.parametrize(
+    ("backend", "expected"),
+    [
+        ("vllm", "gpu_memory_utilization=0.85"),
+        ("sglang", "mem_fraction_static=0.85"),
+    ],
+)
+def test_snippet_perf_budget_updates_backend_flag(monkeypatch, backend, expected):
+    model = make_vlm_model()
+
+    monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [model])
+    monkeypatch.setattr("hardware.detector.detect_hardware", lambda: hw_with_gpu(24))
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "snippet",
+            "Qwen/Qwen2.5-VL-7B-Instruct",
+            "--backend",
+            backend,
+            "--image",
+            "/tmp/image.png",
+            "--perf-vram",
+            "10%",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert expected in result.stdout
+
+
+def test_snippet_transformers_perf_budget_updates_memory_fraction(monkeypatch):
+    model = make_model(model_id="org/Test-7B")
+
+    monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [model])
+    monkeypatch.setattr("hardware.detector.detect_hardware", lambda: hw_with_gpu(24))
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "snippet",
+            "org/Test-7B",
+            "--backend",
+            "transformers",
+            "--perf-vram",
+            "10%",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "gpu_memory_fraction = 0.85" in result.stdout
 
 
 def render_json_output(

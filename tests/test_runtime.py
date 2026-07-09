@@ -554,6 +554,23 @@ def test_auto_gpu_memory_utilization_uses_tightest_gpu_ratio():
     assert auto_gpu_memory_utilization(hardware) == 0.75
 
 
+def test_auto_gpu_memory_utilization_defaults_without_reported_vram():
+    hardware = HardwareInfo(
+        os="linux",
+        gpus=[
+            GPUInfo(
+                name="Shared GPU",
+                vendor="intel",
+                vram_bytes=0,
+                usable_vram_bytes=0,
+                shared_memory=True,
+            )
+        ],
+    )
+
+    assert auto_gpu_memory_utilization(hardware) == 0.90
+
+
 def test_transformers_backend_is_not_a_server_backend():
     model = vlm_model()
 

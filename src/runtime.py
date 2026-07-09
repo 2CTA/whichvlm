@@ -327,8 +327,12 @@ def generate_run_script(
 
 def auto_gpu_memory_utilization(hardware: HardwareInfo) -> float:
     return min(
-        (gpu.usable_vram_bytes or gpu.vram_bytes) / gpu.vram_bytes
-        for gpu in hardware.gpus
+        (
+            (gpu.usable_vram_bytes or gpu.vram_bytes) / gpu.vram_bytes
+            for gpu in hardware.gpus
+            if gpu.vram_bytes > 0
+        ),
+        default=0.90,
     )
 
 
@@ -510,17 +514,22 @@ def print_decode_metrics(started_at, first_token_at, token_count):
 """
 
 
-def transformers_runtime_setup(quantization_lines: str) -> str:
+def transformers_runtime_setup(
+    quantization_lines: str,
+    gpu_memory_utilization: float | None = None,
+) -> str:
+    gpu_memory_fraction = format_gpu_memory_utilization(gpu_memory_utilization)
     return f"""\
 offload_folder = tempfile.mkdtemp(prefix="whichvlm_transformers_offload_")
 process = psutil.Process()
+gpu_memory_fraction = {gpu_memory_fraction}
 
 
 def cuda_memory_limits():
     if not torch.cuda.is_available():
         return None
     return {{
-        index: f"{{int(torch.cuda.mem_get_info(index)[0] * 0.9 / 1024**2)}}MiB"
+        index: f"{{int(torch.cuda.mem_get_info(index)[0] * gpu_memory_fraction / 1024**2)}}MiB"
         for index in range(torch.cuda.device_count())
     }}
 
@@ -726,9 +735,13 @@ class TransformersBackend(Backend):
                 request.image_path,
                 request.cpu_only,
                 request.max_tokens,
+                request.gpu_memory_utilization,
             )
         return generate_transformers_text_script(
-            request.model, request.cpu_only, request.max_tokens
+            request.model,
+            request.cpu_only,
+            request.max_tokens,
+            request.gpu_memory_utilization,
         )
 
 
@@ -1223,7 +1236,10 @@ raise SystemExit(subprocess.run(cmd).returncode)
 
 
 def generate_transformers_text_script(
-    model: ModelInfo, cpu_only: bool, max_tokens: int
+    model: ModelInfo,
+    cpu_only: bool,
+    max_tokens: int,
+    gpu_memory_utilization: float | None = None,
 ) -> str:
     device_map = '"cpu"' if cpu_only else '"auto"'
     imports = transformers_import_names(
@@ -1231,7 +1247,9 @@ def generate_transformers_text_script(
         "AutoTokenizer",
         ("TextIteratorStreamer", *quantization_import_names(model)),
     )
-    runtime_setup = transformers_runtime_setup(quantization_config_lines(model))
+    runtime_setup = transformers_runtime_setup(
+        quantization_config_lines(model), gpu_memory_utilization
+    )
     return f'''\
 import shutil
 import tempfile
@@ -1305,6 +1323,7 @@ def generate_transformers_vlm_script(
     image_path: str,
     cpu_only: bool,
     max_tokens: int,
+    gpu_memory_utilization: float | None = None,
 ) -> str:
     device_map = '"cpu"' if cpu_only else '"auto"'
     model_class, processor_class, processor_extra_args = transformers_vlm_profile(model)
@@ -1314,7 +1333,9 @@ def generate_transformers_vlm_script(
         ("TextIteratorStreamer", *quantization_import_names(model)),
     )
     processor_arg_lines = processor_kwargs_lines(processor_extra_args)
-    runtime_setup = transformers_runtime_setup(quantization_config_lines(model))
+    runtime_setup = transformers_runtime_setup(
+        quantization_config_lines(model), gpu_memory_utilization
+    )
     return f'''\
 import shutil
 import tempfile
