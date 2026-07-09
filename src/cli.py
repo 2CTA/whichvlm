@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import re
 from typing import Optional
 
 import httpx
@@ -11,12 +10,14 @@ from rich.console import Console
 from data.gpu import BYTES_PER_GIB
 from data.quantization import QUANT_PREFERENCE_ORDER
 from engine.workload import Workload, WorkloadTask
+from hardware.budget import apply_memory_budgets, parse_memory_amount
 from hardware.types import HardwareInfo, ensure_backend_capabilities
 from models.types import GGUFVariant, ModelInfo
 from runtime import (
     RuntimeRequest,
     RuntimeUnsupportedError,
     ServeRequest,
+    auto_gpu_memory_utilization,
     generate_run_script,
     normalize_backend_name,
     requires_image,
@@ -58,6 +59,7 @@ RANKING_PANEL = "Ranking"
 WORKLOAD_PANEL = "Workload"
 HARDWARE_PANEL = "Hardware"
 OUTPUT_PANEL = "Output"
+GPU_MEMORY_BACKENDS = {"vllm", "sglang"}
 
 
 def vlm_progress():
@@ -193,153 +195,6 @@ def resolve_speed_filter(speed: str, min_speed: float | None) -> float | None:
     return presets[mode]
 
 
-MEMORY_RE = re.compile(
-    r"^(?P<number>\d+(?:\.\d+)?)\s*(?P<unit>gib|gb|g|mib|mb|m)?$",
-    re.IGNORECASE,
-)
-
-
-def parse_memory_amount(
-    value: str, *, option_name: str, total_bytes: int | None = None
-) -> int:
-    raw = value.strip()
-    if not raw:
-        console.print(f"[red]Error:[/] {option_name} cannot be empty.")
-        raise typer.Exit(code=1)
-
-    if raw.endswith("%"):
-        if total_bytes is None:
-            console.print(f"[red]Error:[/] {option_name} percentage needs a base size.")
-            raise typer.Exit(code=1)
-        try:
-            pct = float(raw[:-1])
-        except ValueError:
-            console.print(f"[red]Error:[/] Invalid {option_name}: {value!r}.")
-            raise typer.Exit(code=1)
-        if pct < 0:
-            console.print(f"[red]Error:[/] {option_name} must be non-negative.")
-            raise typer.Exit(code=1)
-        return int(total_bytes * pct / 100.0)
-
-    match = MEMORY_RE.match(raw)
-    if not match:
-        console.print(
-            f"[red]Error:[/] Invalid {option_name}: {value!r}. "
-            "Use values like 1.5GB, 512MB, 10%, or 8."
-        )
-        raise typer.Exit(code=1)
-
-    number = float(match.group("number"))
-    unit = (match.group("unit") or "gb").lower()
-    if number < 0:
-        console.print(f"[red]Error:[/] {option_name} must be non-negative.")
-        raise typer.Exit(code=1)
-
-    if unit in {"gib", "gb", "g"}:
-        return int(number * BYTES_PER_GIB)
-    return int(number * 1024**2)
-
-
-def auto_vram_headroom(vram_bytes: int) -> int:
-    if vram_bytes <= 0:
-        return 0
-    return int(max(512 * 1024**2, min(vram_bytes * 0.05, 2 * BYTES_PER_GIB)))
-
-
-def parse_vram_headroom(value: str, vram_bytes: int) -> int:
-    mode = value.strip().lower()
-    if mode == "auto":
-        return auto_vram_headroom(vram_bytes)
-    if mode in {"none", "off", "0"}:
-        return 0
-    return parse_memory_amount(
-        value,
-        option_name="--vram-headroom",
-        total_bytes=vram_bytes,
-    )
-
-
-def apply_memory_budgets(
-    hardware: HardwareInfo,
-    *,
-    vram_headroom: str,
-    perf_vram: str = "none",
-    ram_budget: str | None,
-) -> HardwareInfo:
-    headroom_mode = vram_headroom.strip().lower()
-    if not hardware.gpus and headroom_mode not in {"auto", "none", "off", "0"}:
-        parse_memory_amount(
-            vram_headroom,
-            option_name="--vram-headroom",
-            total_bytes=BYTES_PER_GIB,
-        )
-    perf_mode = perf_vram.strip().lower()
-    if not hardware.gpus and perf_mode not in {"none", "off", "0"}:
-        parse_memory_amount(
-            perf_vram,
-            option_name="--perf-vram",
-            total_bytes=BYTES_PER_GIB,
-        )
-
-    reserved_values: list[int] = []
-    perf_reserved_values: list[int] = []
-    for gpu in hardware.gpus:
-        reserved = parse_vram_headroom(vram_headroom, gpu.vram_bytes)
-        perf_reserved = 0
-        if perf_mode not in {"none", "off", "0"}:
-            perf_reserved = parse_memory_amount(
-                perf_vram,
-                option_name="--perf-vram",
-                total_bytes=gpu.vram_bytes,
-            )
-        gpu.usable_vram_bytes = max(0, gpu.vram_bytes - reserved - perf_reserved)
-        if reserved > 0:
-            reserved_values.append(reserved)
-        if perf_reserved > 0:
-            perf_reserved_values.append(perf_reserved)
-
-    if reserved_values:
-        unique_reserved = sorted(set(reserved_values))
-        if len(unique_reserved) == 1:
-            note = f"VRAM headroom: {format_budget_bytes(unique_reserved[0])} reserved per GPU"
-        else:
-            note = "VRAM headroom: auto reserve applied per GPU"
-        hardware.budget_notes.append(note)
-    if perf_reserved_values:
-        unique_reserved = sorted(set(perf_reserved_values))
-        if len(unique_reserved) == 1:
-            note = f"Performance reserve: {format_budget_bytes(unique_reserved[0])} per GPU"
-        else:
-            note = "Performance reserve: applied per GPU"
-        hardware.budget_notes.append(note)
-
-    if ram_budget:
-        mode = ram_budget.strip().lower()
-        if mode == "available":
-            from hardware.memory import detect_available_ram_bytes
-
-            hardware.ram_budget_bytes = detect_available_ram_bytes()
-            hardware.budget_notes.append(
-                f"RAM budget: current available {format_budget_bytes(hardware.ram_budget_bytes)}"
-            )
-        elif mode not in {"auto", "none", "off"}:
-            hardware.ram_budget_bytes = parse_memory_amount(
-                ram_budget, option_name="--ram-budget", total_bytes=hardware.ram_bytes
-            )
-            hardware.budget_notes.append(
-                f"RAM budget: {format_budget_bytes(hardware.ram_budget_bytes)}"
-            )
-    return hardware
-
-
-def format_budget_bytes(value: int) -> str:
-    if value >= BYTES_PER_GIB:
-        return f"{value / BYTES_PER_GIB:.1f} GB"
-    if value >= 1024**2:
-        return f"{value / 1024**2:.0f} MB"
-    return f"{value / 1024:.0f} KB"
-
-
 def apply_gpu_overrides(
     hardware: HardwareInfo,
     cpu_only: bool,
@@ -359,6 +214,64 @@ def apply_gpu_overrides(
             console.print(f"[red]Error:[/] {e}")
             raise typer.Exit(code=1)
     return hardware
+
+
+def resolve_gpu_memory_utilization(
+    value: str | None,
+    hardware: HardwareInfo | None,
+) -> float | None:
+    if value is None:
+        return None
+    if value.strip().lower() == "auto":
+        if hardware is None:
+            console.print(
+                "[red]Error:[/] --gpu-memory-utilization auto requires GPU hardware."
+            )
+            raise typer.Exit(code=1)
+        return auto_gpu_memory_utilization(hardware)
+    try:
+        utilization = float(value)
+    except ValueError:
+        console.print(
+            "[red]Error:[/] --gpu-memory-utilization must be auto or a number between 0 and 1."
+        )
+        raise typer.Exit(code=1)
+    if utilization <= 0.0 or utilization > 1.0:
+        console.print(
+            "[red]Error:[/] --gpu-memory-utilization must be between 0 and 1."
+        )
+        raise typer.Exit(code=1)
+    return utilization
+
+
+def is_auto_gpu_memory_utilization(value: str | None) -> bool:
+    return value is not None and value.strip().lower() == "auto"
+
+
+def apply_runtime_memory_budget(
+    hardware: HardwareInfo,
+    gpu_memory_utilization: str | None,
+    perf_vram: str,
+) -> None:
+    if is_auto_gpu_memory_utilization(gpu_memory_utilization):
+        apply_memory_budgets(
+            hardware, vram_headroom="auto", perf_vram=perf_vram, ram_budget=None
+        )
+
+
+def resolve_runtime_gpu_memory_utilization(
+    value: str | None,
+    hardware: HardwareInfo | None,
+    backend_name: str,
+) -> float | None:
+    if value is None:
+        return None
+    if backend_name not in GPU_MEMORY_BACKENDS:
+        console.print(
+            "[red]Error:[/] --gpu-memory-utilization only applies to vllm and sglang."
+        )
+        raise typer.Exit(code=1)
+    return resolve_gpu_memory_utilization(value, hardware)
 
 
 def auto_min_params_for_profile(hardware: HardwareInfo, profile: str) -> float | None:
@@ -836,6 +749,11 @@ def plan(
         "--ram",
         help="System RAM budget for partial offload, e.g. 64GB",
     ),
+    perf_vram: str = typer.Option(
+        "none",
+        "--perf-vram",
+        help="Reserve GPU memory for inference performance features: none | 1GB | 10%",
+    ),
     min_speed: Optional[float] = typer.Option(
         None,
         "--min-speed",
@@ -877,6 +795,7 @@ def plan(
             system_ram_bytes,
             min_speed,
             os_name,
+            perf_vram,
         )
     else:
         console.print()
@@ -890,6 +809,7 @@ def plan(
             system_ram_bytes,
             min_speed,
             os_name,
+            perf_vram,
         )
         console.print()
 
@@ -967,6 +887,12 @@ def hardware_plan(
         help="Override target GPU VRAM in GB",
         rich_help_panel=HARDWARE_PANEL,
     ),
+    perf_vram: str = typer.Option(
+        "none",
+        "--perf-vram",
+        help="Reserve GPU memory for inference performance features: none | 1GB | 10%",
+        rich_help_panel=HARDWARE_PANEL,
+    ),
     min_speed: Optional[float] = typer.Option(
         None,
         "--min-speed",
@@ -995,7 +921,6 @@ def hardware_plan(
     from engine.ranker import rank_models
     from hardware.catalog import (
         PLAN_SYSTEM_RAM_BYTES,
-        PLAN_VRAM_HEADROOM_RATIO,
         lookup_catalog_entry,
     )
     from hardware.gpu_simulator import create_synthetic_gpu
@@ -1017,7 +942,6 @@ def hardware_plan(
         except ValueError as e:
             console.print(f"[red]Error:[/] {e}")
             raise typer.Exit(code=1)
-        gpu.usable_vram_bytes = int(gpu.vram_bytes * (1.0 - PLAN_VRAM_HEADROOM_RATIO))
         ensure_backend_capabilities(gpu, os_name)
         hardware = HardwareInfo(
             gpus=[gpu],
@@ -1025,6 +949,12 @@ def hardware_plan(
             disk_free_bytes=1_000 * BYTES_PER_GIB,
             os=os_name,
         )
+    apply_memory_budgets(
+        hardware,
+        vram_headroom="auto",
+        perf_vram=perf_vram,
+        ram_budget=None,
+    )
 
     with vlm_progress() as progress:
         task = progress.add_task("loading VLM packages...", total=None)
@@ -1118,6 +1048,11 @@ def upgrade(
     cpu_only: bool = typer.Option(
         False, "--cpu-only", help="Compare against a CPU-only baseline"
     ),
+    perf_vram: str = typer.Option(
+        "none",
+        "--perf-vram",
+        help="Reserve GPU memory for inference performance features: none | 1GB | 10%",
+    ),
     json_output: bool = typer.Option(False, "--json"),
     refresh: bool = typer.Option(False, "--refresh"),
 ):
@@ -1135,6 +1070,9 @@ def upgrade(
         current_hw = detect_hardware()
         if cpu_only:
             current_hw.gpus = []
+        apply_memory_budgets(
+            current_hw, vram_headroom="auto", perf_vram=perf_vram, ram_budget=None
+        )
 
         progress.update(task, description="loading VLM packages...")
         models = load_model_catalog(
@@ -1207,6 +1145,9 @@ def upgrade(
                 ram_bytes=current_hw.ram_bytes,
                 disk_free_bytes=current_hw.disk_free_bytes,
                 os=current_hw.os,
+            )
+            apply_memory_budgets(
+                sim_hw, vram_headroom="auto", perf_vram=perf_vram, ram_budget=None
             )
             sim_results = rank_for(sim_hw)
             target_results.append((raw_name, sim_hw, sim_results))
@@ -1408,6 +1349,16 @@ def run(
         "-b",
         help="Runtime backend: auto, transformers, llama.cpp, mlx, vllm, sglang",
     ),
+    gpu_memory_utilization: Optional[str] = typer.Option(
+        None,
+        "--gpu-memory-utilization",
+        help="Backend GPU memory utilization: auto | 0.82",
+    ),
+    perf_vram: str = typer.Option(
+        "none",
+        "--perf-vram",
+        help="Reserve GPU memory for inference performance features: none | 1GB | 10%",
+    ),
 ):
     import shutil
 
@@ -1436,6 +1387,7 @@ def run(
         hardware = detect_hardware()
         if cpu_only:
             hardware.gpus = []
+        apply_runtime_memory_budget(hardware, gpu_memory_utilization, perf_vram)
         bench_scores = load_benchmark_cache() or {}
         families = group_models(models)
         all_models = []
@@ -1517,15 +1469,22 @@ def run(
         console.print("[red]Error:[/] VLM models require --image PATH.")
         raise typer.Exit(code=1)
     try:
-        if hardware is None and backend_name and backend_name != "auto":
+        if hardware is None and (
+            (backend_name and backend_name != "auto")
+            or is_auto_gpu_memory_utilization(gpu_memory_utilization)
+        ):
             from hardware.detector import detect_hardware
 
             hardware = detect_hardware()
             if cpu_only:
                 hardware.gpus = []
+            apply_runtime_memory_budget(hardware, gpu_memory_utilization, perf_vram)
         backend = select_backend(model, variant, hardware, backend_name)
         deps = backend.dependencies(model, variant)
         _, script_type = resolve_model_deps(model, variant, backend_name, hardware)
+        runtime_gpu_memory_utilization = resolve_runtime_gpu_memory_utilization(
+            gpu_memory_utilization, hardware, backend.name
+        )
     except RuntimeUnsupportedError as e:
         console.print(f"[red]Error:[/] {e}")
         raise typer.Exit(code=1)
@@ -1543,6 +1502,7 @@ def run(
             image_path=image,
             max_tokens=max_tokens,
             hardware=hardware,
+            gpu_memory_utilization=runtime_gpu_memory_utilization,
         )
         raise typer.Exit(code=run_request(request, backend.name))
     except RuntimeUnsupportedError as e:
@@ -1573,6 +1533,16 @@ def serve(
         "-b",
         help="Server backend: auto, llama.cpp, vllm, sglang",
     ),
+    gpu_memory_utilization: Optional[str] = typer.Option(
+        None,
+        "--gpu-memory-utilization",
+        help="Backend GPU memory utilization: auto | 0.82",
+    ),
+    perf_vram: str = typer.Option(
+        "none",
+        "--perf-vram",
+        help="Reserve GPU memory for inference performance features: none | 1GB | 10%",
+    ),
 ):
     import shutil
 
@@ -1594,6 +1564,7 @@ def serve(
     hardware = detect_hardware()
     if cpu_only:
         hardware.gpus = []
+    apply_runtime_memory_budget(hardware, gpu_memory_utilization, perf_vram)
 
     variant = (
         select_gguf_variant(model, quant) if should_select_gguf(backend_name) else None
@@ -1601,6 +1572,9 @@ def serve(
     try:
         backend = select_serve_backend(model, variant, hardware, backend_name)
         deps = backend.serve_dependencies(model, variant)
+        runtime_gpu_memory_utilization = resolve_runtime_gpu_memory_utilization(
+            gpu_memory_utilization, hardware, backend.name
+        )
     except RuntimeUnsupportedError as e:
         console.print(f"[red]Error:[/] {e}")
         raise typer.Exit(code=1)
@@ -1619,6 +1593,7 @@ def serve(
             hardware=hardware,
             host=host,
             port=port,
+            gpu_memory_utilization=runtime_gpu_memory_utilization,
         )
         raise typer.Exit(code=serve_request(request, backend.name))
     except RuntimeUnsupportedError as e:
@@ -1654,6 +1629,16 @@ def snippet(
         "-b",
         help="Runtime backend: auto, transformers, llama.cpp, mlx, vllm, sglang",
     ),
+    gpu_memory_utilization: Optional[str] = typer.Option(
+        None,
+        "--gpu-memory-utilization",
+        help="Backend GPU memory utilization: auto | 0.82",
+    ),
+    perf_vram: str = typer.Option(
+        "none",
+        "--perf-vram",
+        help="Reserve GPU memory for inference performance features: none | 1GB | 10%",
+    ),
 ):
     from rich.syntax import Syntax
 
@@ -1680,11 +1665,18 @@ def snippet(
         raise typer.Exit(code=1)
     try:
         hardware = None
-        if backend_name and backend_name != "auto":
+        if (backend_name and backend_name != "auto") or is_auto_gpu_memory_utilization(
+            gpu_memory_utilization
+        ):
             from hardware.detector import detect_hardware
 
             hardware = detect_hardware()
-        deps, _ = resolve_model_deps(model, variant, backend_name, hardware)
+            apply_runtime_memory_budget(hardware, gpu_memory_utilization, perf_vram)
+        backend = select_backend(model, variant, hardware, backend_name)
+        deps = backend.dependencies(model, variant)
+        runtime_gpu_memory_utilization = resolve_runtime_gpu_memory_utilization(
+            gpu_memory_utilization, hardware, backend.name
+        )
         code = generate_run_script(
             model,
             variant,
@@ -1692,8 +1684,9 @@ def snippet(
             False,
             image_path=image,
             max_tokens=max_tokens,
-            backend_name=backend_name,
+            backend_name=backend.name,
             hardware=hardware,
+            gpu_memory_utilization=runtime_gpu_memory_utilization,
         )
     except RuntimeUnsupportedError as e:
         console.print(f"[red]Error:[/] {e}")

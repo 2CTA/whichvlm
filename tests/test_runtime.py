@@ -12,6 +12,7 @@ from hardware.types import BackendCapability, GPUInfo, HardwareInfo
 from runtime import (
     ServeRequest,
     RuntimeUnsupportedError,
+    auto_gpu_memory_utilization,
     generate_run_script,
     recommended_runtime_backend,
     requires_image,
@@ -471,6 +472,21 @@ def test_vllm_vlm_backend_requires_explicit_linux_cuda_support():
     assert "[metrics] ttft=" in script
 
 
+def test_vllm_vlm_script_uses_requested_gpu_memory_utilization():
+    script = generate_run_script(
+        vlm_model(),
+        None,
+        4096,
+        False,
+        image_path="/tmp/image.png",
+        backend_name="vllm",
+        hardware=linux_cuda_hardware(),
+        gpu_memory_utilization=0.82,
+    )
+
+    assert "gpu_memory_utilization=0.82" in script
+
+
 def test_sglang_vlm_backend_uses_offline_engine():
     model = vlm_model()
 
@@ -498,6 +514,44 @@ def test_sglang_vlm_backend_uses_offline_engine():
     assert "stream=True" in script
     assert "image_data=image_path" in script
     assert '"max_new_tokens": 96' in script
+    assert "mem_fraction_static=0.90" in script
+
+
+def test_sglang_vlm_script_uses_requested_gpu_memory_utilization():
+    script = generate_run_script(
+        vlm_model(),
+        None,
+        4096,
+        False,
+        image_path="/tmp/image.png",
+        backend_name="sglang",
+        hardware=linux_cuda_hardware(),
+        gpu_memory_utilization=0.82,
+    )
+
+    assert "mem_fraction_static=0.82" in script
+
+
+def test_auto_gpu_memory_utilization_uses_tightest_gpu_ratio():
+    hardware = HardwareInfo(
+        os="linux",
+        gpus=[
+            GPUInfo(
+                name="NVIDIA Test GPU",
+                vendor="nvidia",
+                vram_bytes=24_000_000_000,
+                usable_vram_bytes=20_400_000_000,
+            ),
+            GPUInfo(
+                name="NVIDIA Test GPU 2",
+                vendor="nvidia",
+                vram_bytes=16_000_000_000,
+                usable_vram_bytes=12_000_000_000,
+            ),
+        ],
+    )
+
+    assert auto_gpu_memory_utilization(hardware) == 0.75
 
 
 def test_transformers_backend_is_not_a_server_backend():
@@ -556,3 +610,67 @@ def test_vllm_serve_uses_openai_server_command(monkeypatch):
         "8192",
         "--trust-remote-code",
     ]
+
+
+def test_vllm_serve_passes_gpu_memory_utilization(monkeypatch):
+    model = vlm_model()
+    captured: dict[str, list[str]] = {}
+
+    class Result:
+        returncode = 0
+
+    def fake_run(cmd):
+        captured["cmd"] = cmd
+        return Result()
+
+    monkeypatch.setattr("runtime.subprocess.run", fake_run)
+
+    code = serve_request(
+        ServeRequest(
+            model=model,
+            artifact=None,
+            context_length=8192,
+            cpu_only=False,
+            hardware=linux_cuda_hardware(),
+            host="0.0.0.0",
+            port=9000,
+            gpu_memory_utilization=0.82,
+        ),
+        backend_name="vllm",
+    )
+
+    assert code == 0
+    assert "--gpu-memory-utilization" in captured["cmd"]
+    assert "0.82" in captured["cmd"]
+
+
+def test_sglang_serve_passes_gpu_memory_utilization(monkeypatch):
+    model = vlm_model()
+    captured: dict[str, list[str]] = {}
+
+    class Result:
+        returncode = 0
+
+    def fake_run(cmd):
+        captured["cmd"] = cmd
+        return Result()
+
+    monkeypatch.setattr("runtime.subprocess.run", fake_run)
+
+    code = serve_request(
+        ServeRequest(
+            model=model,
+            artifact=None,
+            context_length=8192,
+            cpu_only=False,
+            hardware=linux_cuda_hardware(),
+            host="0.0.0.0",
+            port=9000,
+            gpu_memory_utilization=0.82,
+        ),
+        backend_name="sglang",
+    )
+
+    assert code == 0
+    assert "--mem-fraction-static" in captured["cmd"]
+    assert "0.82" in captured["cmd"]

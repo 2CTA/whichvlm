@@ -5,6 +5,7 @@ from rich.console import Console
 
 import output.console as console_mod
 from data.gpu import BYTES_PER_GIB
+from hardware.budget import auto_vram_headroom
 from hardware.catalog import (
     HARDWARE_CATALOG,
     PLAN_SYSTEM_RAM_BYTES,
@@ -54,6 +55,17 @@ def test_plan_partial_offload_uses_ram_not_vram_ratio():
     assert rtx4060["binding_constraint"] == "VRAM"
 
 
+def test_plan_gpu_compatibility_reserves_perf_vram():
+    model = planning_model(params=7_000_000_000)
+    rows = plan_gpu_compatibility(model, "Q4_K_M", perf_vram="10%")
+    rtx4090 = next(row for row in rows if row["name"] == "RTX 4090")
+    total_vram = 24 * BYTES_PER_GIB
+
+    assert rtx4090["reserved_headroom_bytes"] == (
+        auto_vram_headroom(total_vram) + int(total_vram * 0.10)
+    )
+
+
 def test_plan_target_vram_respects_workload_without_cached_rows():
     model = planning_model(params=7_000_000_000)
 
@@ -84,8 +96,8 @@ def test_plan_reverse_lookup_returns_full_partial_and_multi_gpu():
     recommendations = plan_recommendations(single_gpu_rows, multi_gpu_rows)
 
     assert recommendations["smallest_full_gpu"]["name"] == "H200"
-    assert recommendations["smallest_partial_offload"]["name"] == "A100 40GB"
-    assert recommendations["multi_gpu_alternatives"][0]["name"] == "2x MI210"
+    assert recommendations["smallest_partial_offload"]["name"] == "RTX 5090"
+    assert recommendations["multi_gpu_alternatives"][0]["name"] == "2x RTX A6000"
     assert recommendations["multi_gpu_alternatives"][0]["uses_multi_gpu"] is True
     assert recommendations["multi_gpu_alternatives"][0]["multi_gpu_support"].startswith(
         "practical "
@@ -121,6 +133,7 @@ def test_plan_json_includes_workload_and_reverse_lookup():
             video_frames=4,
             system_ram_bytes=32 * BYTES_PER_GIB,
             min_speed=1.0,
+            perf_vram="10%",
         )
     finally:
         console_mod.console = original_console
@@ -131,6 +144,7 @@ def test_plan_json_includes_workload_and_reverse_lookup():
     assert "reverse_lookup" in data
     assert data["gpu_compatibility"][0]["supported_backends"]
     assert data["workload"]["os"] == "linux"
+    assert data["workload"]["perf_vram"] == "10%"
 
 
 def test_hardware_catalog_carries_normalized_metadata():

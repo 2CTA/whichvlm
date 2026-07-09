@@ -14,10 +14,10 @@ from engine.compatibility import check_compatibility
 from engine.performance import estimate_tok_per_sec
 from engine.vram import estimate_vram, estimate_vram_details
 from engine.workload import VisionWorkload
+from hardware.budget import apply_memory_budgets
 from hardware.catalog import (
     HARDWARE_CATALOG,
     PLAN_SYSTEM_RAM_BYTES,
-    PLAN_VRAM_HEADROOM_RATIO,
     HardwareCatalogEntry,
 )
 from hardware.types import GPUInfo, HardwareInfo
@@ -30,6 +30,15 @@ PRACTICAL_PARTIAL_MAX_OFFLOAD_RATIO = 0.65
 PRACTICAL_PARTIAL_MIN_USABLE_VRAM_BYTES = 6 * BYTES_PER_GIB
 PRACTICAL_PARTIAL_MIN_TOK_PER_SEC = 2.0
 MULTI_GPU_SPEED_FACTOR = 0.70
+
+
+def apply_plan_memory_budget(hardware: HardwareInfo, perf_vram: str) -> HardwareInfo:
+    return apply_memory_budgets(
+        hardware,
+        vram_headroom="auto",
+        perf_vram=perf_vram,
+        ram_budget=None,
+    )
 
 
 def plan_variant_for_quant(model: ModelInfo, quant: str) -> GGUFVariant:
@@ -260,13 +269,16 @@ def plan_gpu_compatibility(
     system_ram_bytes: int = PLAN_SYSTEM_RAM_BYTES,
     min_speed: float | None = None,
     os_name: str = "linux",
+    perf_vram: str = "none",
 ) -> list[dict]:
     vision_workload = plan_vision_workload(
         context_length, image_count, image_size, video_frames
     )
     rows = []
     for entry in HARDWARE_CATALOG:
-        hardware = entry.to_hardware(system_ram_bytes, os_name)
+        hardware = apply_plan_memory_budget(
+            entry.to_hardware(system_ram_bytes, os_name), perf_vram
+        )
         rows.append(
             plan_row_for_hardware(
                 model,
@@ -288,8 +300,11 @@ def multi_gpu_hardware(
     count: int,
     system_ram_bytes: int,
     os_name: str,
+    perf_vram: str,
 ) -> HardwareInfo:
-    hardware = entry.to_hardware(system_ram_bytes, os_name)
+    hardware = apply_plan_memory_budget(
+        entry.to_hardware(system_ram_bytes, os_name), perf_vram
+    )
     gpu = hardware.gpus[0]
     hardware.gpus = [copy(gpu) for _ in range(count)]
     return hardware
@@ -305,6 +320,7 @@ def plan_multi_gpu_compatibility(
     system_ram_bytes: int,
     min_speed: float | None,
     os_name: str = "linux",
+    perf_vram: str = "none",
 ) -> list[dict]:
     vision_workload = plan_vision_workload(
         context_length, image_count, image_size, video_frames
@@ -314,7 +330,9 @@ def plan_multi_gpu_compatibility(
         for entry in HARDWARE_CATALOG:
             if not entry.multi_gpu_backends:
                 continue
-            hardware = multi_gpu_hardware(entry, count, system_ram_bytes, os_name)
+            hardware = multi_gpu_hardware(
+                entry, count, system_ram_bytes, os_name, perf_vram
+            )
             rows.append(
                 plan_row_for_hardware(
                     model,
@@ -386,6 +404,7 @@ def display_plan(
     system_ram_bytes: int = PLAN_SYSTEM_RAM_BYTES,
     min_speed: float | None = None,
     os_name: str = "linux",
+    perf_vram: str = "none",
 ) -> None:
     params = format_params(model.parameter_count)
     active = ""
@@ -443,6 +462,7 @@ def display_plan(
         system_ram_bytes,
         min_speed,
         os_name,
+        perf_vram,
     )
     multi_gpu_rows = plan_multi_gpu_compatibility(
         model,
@@ -454,13 +474,17 @@ def display_plan(
         system_ram_bytes,
         min_speed,
         os_name,
+        perf_vram,
     )
     recommendations = plan_recommendations(gpu_rows, multi_gpu_rows)
+    budget_label = "auto headroom reserved"
+    if perf_vram.strip().lower() not in {"none", "off", "0"}:
+        budget_label = f"auto headroom + {perf_vram} perf reserve"
 
     gpu_table = Table(
         title=(
             f"GPU Compatibility ({target_quant}, {format_bytes(target_vram)} required, "
-            f"{PLAN_VRAM_HEADROOM_RATIO:.0%} headroom reserved)"
+            f"{budget_label})"
         ),
         show_lines=True,
     )

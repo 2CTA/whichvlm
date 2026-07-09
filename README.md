@@ -49,6 +49,15 @@ Change the VLM workload estimate:
 uv run whichvlm --image-count 2 --image-size 896 --context-length 8192
 ```
 
+Reserve memory for backend overhead or performance features:
+
+```bash
+uv run whichvlm --gpu "RTX 4090" --vram-headroom auto --perf-vram 10%
+uv run whichvlm plan Qwen/Qwen2.5-VL-7B-Instruct --perf-vram 10%
+uv run whichvlm hardware-plan "RTX 4090" --perf-vram 10%
+uv run whichvlm upgrade "RTX 4090" "RTX 5090" --perf-vram 10%
+```
+
 Only show full GPU fits:
 
 ```bash
@@ -63,6 +72,13 @@ VLM runners require an image path.
 ```bash
 uv run whichvlm run Qwen/Qwen2.5-VL-7B-Instruct --image ./image.jpg --max-tokens 256
 uv run whichvlm snippet Qwen/Qwen2.5-VL-7B-Instruct --image ./image.jpg --context-length 8192
+```
+
+For vLLM and SGLang, derive backend memory utilization from the same reserve:
+
+```bash
+uv run whichvlm run Qwen/Qwen2.5-VL-7B-Instruct --backend vllm --gpu-memory-utilization auto --perf-vram 10% --image ./image.jpg
+uv run whichvlm serve Qwen/Qwen2.5-VL-7B-Instruct --backend sglang --gpu-memory-utilization 0.82
 ```
 
 Runtime support is intentionally guarded:

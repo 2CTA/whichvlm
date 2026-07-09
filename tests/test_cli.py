@@ -14,6 +14,7 @@ from typer.testing import CliRunner
 import cli as cli_mod
 import whichvlm as main_mod
 import output.console as console_mod
+from hardware.budget import auto_vram_headroom
 from cli import (
     apply_memory_budgets,
     apply_gpu_overrides,
@@ -27,6 +28,8 @@ from cli import (
     resolve_ranked_gguf_for_run,
     resolve_evidence_mode,
     resolve_fit_filter,
+    resolve_gpu_memory_utilization,
+    resolve_runtime_gpu_memory_utilization,
     resolve_speed_filter,
     select_gguf_variant,
     validate_evidence,
@@ -37,7 +40,7 @@ from cli import (
 from runtime import generate_run_script
 from utils import current_version
 from engine.types import CompatibilityResult
-from hardware.types import GPUInfo, HardwareInfo, has_backend
+from hardware.types import BackendCapability, GPUInfo, HardwareInfo, has_backend
 from models.types import GGUFVariant, ModelArtifact, ModelInfo
 from output.display import display_json
 
@@ -400,6 +403,16 @@ def test_apply_memory_budgets_accepts_valid_noop_vram_headroom_without_gpus():
 
     assert hw.gpus == []
     assert hw.ram_budget_bytes is None
+
+
+def test_gpu_memory_utilization_validation():
+    assert resolve_gpu_memory_utilization("0.82", None) == 0.82
+    with pytest.raises(Exit):
+        resolve_gpu_memory_utilization("nope", hw_with_gpu(24))
+    with pytest.raises(Exit):
+        resolve_gpu_memory_utilization("1.1", hw_with_gpu(24))
+    with pytest.raises(Exit):
+        resolve_runtime_gpu_memory_utilization("0.82", None, "llama.cpp")
 
 
 def test_main_passes_gpu_only_fit_filter(monkeypatch):
@@ -799,13 +812,20 @@ def test_hardware_plan_scores_target_gpu(monkeypatch):
             "1",
             "--context-length",
             "4096",
+            "--perf-vram",
+            "10%",
         ],
     )
 
     assert result.exit_code == 0
     hardware = captured["hardware"]
     results = captured["results"]
+    total_vram = 12 * 1024**3
     assert hardware.gpus[0].name == "RTX 4070"
+    assert hardware.gpus[0].usable_vram_bytes == (
+        total_vram - auto_vram_headroom(total_vram) - int(total_vram * 0.10)
+    )
+    assert any("Performance reserve" in note for note in hardware.budget_notes)
     assert results[0].model.id == "test-org/Test-Vision-7B"
     assert results[0].can_run is True
     assert captured["details"] is True
@@ -1259,6 +1279,56 @@ def test_serve_gguf_model_uses_server_request(monkeypatch):
     assert captured["port"] == 9000
 
 
+def test_serve_vllm_auto_gpu_memory_utilization_uses_perf_budget(monkeypatch):
+    model = ModelInfo(
+        id="Qwen/Qwen2.5-VL-7B-Instruct",
+        family_id="qwen-vl",
+        name="Qwen2.5-VL-7B-Instruct",
+        parameter_count=7_000_000_000,
+        hf_pipeline_tag="image-text-to-text",
+    )
+    hardware = HardwareInfo(
+        os="linux",
+        gpus=[
+            GPUInfo(
+                name="RTX 4090",
+                vendor="nvidia",
+                vram_bytes=24 * 1024**3,
+                backend_capabilities=[BackendCapability("cuda", True)],
+            )
+        ],
+    )
+    captured: dict[str, object] = {}
+
+    def fake_serve_request(request, backend_name=None):
+        captured["gpu_memory_utilization"] = request.gpu_memory_utilization
+        captured["backend_name"] = backend_name
+        return 0
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/uv")
+    monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [model])
+    monkeypatch.setattr("hardware.detector.detect_hardware", lambda: hardware)
+    monkeypatch.setattr(cli_mod, "serve_request", fake_serve_request)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "serve",
+            "Qwen/Qwen2.5-VL-7B-Instruct",
+            "--backend",
+            "vllm",
+            "--gpu-memory-utilization",
+            "auto",
+            "--perf-vram",
+            "10%",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["backend_name"] == "vllm"
+    assert captured["gpu_memory_utilization"] == pytest.approx(0.85)
+
+
 def test_snippet_no_model_found(monkeypatch):
     monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [])
     runner = CliRunner()
@@ -1280,6 +1350,7 @@ def test_snippet_passes_context_length_and_max_tokens(monkeypatch):
         max_tokens=512,
         backend_name=None,
         hardware=None,
+        gpu_memory_utilization=None,
     ):
         captured["context_length"] = context_length
         captured["max_tokens"] = max_tokens
