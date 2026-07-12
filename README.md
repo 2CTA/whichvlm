@@ -23,6 +23,8 @@ uv run pytest -q
 
 ## Use
 
+![whichvlm CLI demo](assets/whichvlm-demo.gif)
+
 Rank VLMs for the current machine:
 
 ```bash
