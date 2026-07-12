@@ -18,6 +18,82 @@ def make_model(params: int, model_id: str = "test/model", **kwargs) -> ModelInfo
     )
 
 
+def vlm_calibration_model(
+    *,
+    params: int = 7_000_000_000,
+    architecture: str = "qwen2_5_vl",
+    model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct",
+    quantization_type: str | None = None,
+) -> ModelInfo:
+    return make_model(
+        params,
+        model_id=model_id,
+        hf_pipeline_tag="image-text-to-text",
+        architecture=architecture,
+        model_format="safetensors",
+        quantization_type=quantization_type,
+        layer_count=28,
+        hidden_size=3584,
+        intermediate_size=18944,
+        attention_heads=28,
+        kv_heads=4,
+        dtype="bfloat16",
+        vision_layer_count=32,
+        vision_hidden_size=1280,
+        vision_intermediate_size=3420,
+        vision_attention_heads=16,
+        projector_hidden_size=3584,
+        patch_size=14,
+        spatial_merge_size=2,
+        components=[
+            ModelComponent(
+                role="vision_encoder",
+                repo_id=model_id,
+                parameter_count=300_000_000,
+                quantization="FP16",
+            ),
+            ModelComponent(
+                role="projector",
+                repo_id=model_id,
+                parameter_count=50_000_000,
+                quantization="FP16",
+            ),
+        ],
+    )
+
+
+def qwen3_moe_model() -> ModelInfo:
+    return make_model(
+        30_000_000_000,
+        model_id="Qwen/Qwen3-30B-A3B",
+        parameter_count_active=3_000_000_000,
+        architecture="qwen3_5moe",
+        is_moe=True,
+        model_format="gguf",
+        layer_count=48,
+        hidden_size=2048,
+        intermediate_size=6144,
+        attention_heads=32,
+        kv_heads=4,
+        dtype="bfloat16",
+    )
+
+
+def qwen3_dense_model() -> ModelInfo:
+    return make_model(
+        30_000_000_000,
+        model_id="Qwen/Qwen3-30B",
+        architecture="qwen3",
+        model_format="gguf",
+        layer_count=48,
+        hidden_size=2048,
+        intermediate_size=6144,
+        attention_heads=32,
+        kv_heads=4,
+        dtype="bfloat16",
+    )
+
+
 def test_estimate_vram_gguf_variant():
     model = make_model(7_000_000_000)
     variant = GGUFVariant(
@@ -208,43 +284,130 @@ def test_vision_architecture_metadata_changes_image_token_cost():
     assert small_patch.components.vision > large_patch.components.vision
 
 
-def test_quantized_transformers_variant_does_not_use_fp16_calibration():
-    model = make_model(
-        7_000_000_000,
-        model_id="test/model-awq",
-        hf_pipeline_tag="image-text-to-text",
-        architecture="qwen2vl",
-        model_format="safetensors",
-        layer_count=28,
-        hidden_size=3584,
-        attention_heads=28,
-        kv_heads=4,
-        dtype="bfloat16",
-        vision_layer_count=32,
-        vision_hidden_size=1280,
-        projector_hidden_size=3584,
-        components=[
-            ModelComponent(
-                role="vision_encoder",
-                repo_id="test/model",
-                parameter_count=300_000_000,
-            ),
-            ModelComponent(
-                role="projector",
-                repo_id="test/model",
-                parameter_count=50_000_000,
-            ),
-        ],
+def test_quantized_transformers_variant_uses_quantized_calibration():
+    awq = vlm_calibration_model(
+        model_id="Qwen/Qwen2.5-VL-7B-Instruct-AWQ",
+        quantization_type="AWQ",
+    )
+    fp16 = vlm_calibration_model()
+    workload = VisionWorkload(image_count=1, image_size=448)
+
+    awq_estimate = estimate_vram_details(awq, None, vision_workload=workload)
+    fp16_estimate = estimate_vram_details(fp16, None, vision_workload=workload)
+
+    assert awq_estimate.confidence == "high"
+    assert awq_estimate.notes == []
+    assert awq_estimate.required_bytes < fp16_estimate.required_bytes
+
+
+def test_gguf_vlm_calibration_raises_confidence_for_architecture_alias():
+    variant = GGUFVariant(
+        filename="qwen2.5-vl-7b-q4_k_m.gguf",
+        quant_type="Q4_K_M",
+        file_size_bytes=4_500_000_000,
+    )
+    workload = VisionWorkload(image_count=1, image_size=448)
+    calibrated = estimate_vram_details(
+        vlm_calibration_model(architecture="qwen2_vl"),
+        variant,
+        vision_workload=workload,
+    )
+    fallback = estimate_vram_details(
+        vlm_calibration_model(architecture="other_vlm"),
+        variant,
+        vision_workload=workload,
+    )
+
+    assert calibrated.confidence == "high"
+    assert calibrated.notes == []
+    assert fallback.confidence == "medium"
+    assert any("no matching peak-memory calibration" in note for note in fallback.notes)
+    assert calibrated.upper_bytes - calibrated.lower_bytes < (
+        fallback.upper_bytes - fallback.lower_bytes
+    )
+
+
+def test_transformers_vlm_calibration_covers_internvl_and_gptq():
+    workload = VisionWorkload(image_count=1, image_size=448)
+    internvl = vlm_calibration_model(
+        params=8_000_000_000,
+        model_id="OpenGVLab/InternVL3-8B",
+        architecture="internvl",
+    )
+    gemma_gptq = vlm_calibration_model(
+        params=27_000_000_000,
+        model_id="ISTA-DASLab/gemma-3-27b-it-GPTQ-4b-128g",
+        architecture="gemma",
+        quantization_type="GPTQ",
+    )
+
+    estimates = [
+        estimate_vram_details(internvl, None, vision_workload=workload),
+        estimate_vram_details(gemma_gptq, None, vision_workload=workload),
+    ]
+
+    assert all(estimate.confidence == "high" for estimate in estimates)
+    assert all(estimate.notes == [] for estimate in estimates)
+
+
+def test_moe_calibration_is_specific_to_moe_architecture():
+    variant = GGUFVariant(
+        filename="qwen3-30b-a3b-q4_k_m.gguf",
+        quant_type="Q4_K_M",
+        file_size_bytes=int(17.1 * 1024**3),
+    )
+
+    moe_estimate = estimate_vram_details(qwen3_moe_model(), variant)
+    dense_family_estimate = estimate_vram_details(qwen3_dense_model(), variant)
+
+    assert moe_estimate.confidence == "high"
+    assert moe_estimate.notes == []
+    assert dense_family_estimate.confidence == "medium"
+    assert any(
+        "no matching peak-memory calibration" in note
+        for note in dense_family_estimate.notes
+    )
+
+
+def test_calibration_requires_matching_vlm_workload():
+    variant = GGUFVariant(
+        filename="qwen2.5-vl-7b-q4_k_m.gguf",
+        quant_type="Q4_K_M",
+        file_size_bytes=4_500_000_000,
+    )
+
+    calibrated = estimate_vram_details(
+        vlm_calibration_model(),
+        variant,
+        vision_workload=VisionWorkload(image_count=1, image_size=448),
+    )
+    fallback = estimate_vram_details(
+        vlm_calibration_model(),
+        variant,
+        vision_workload=VisionWorkload(image_count=2, image_size=448),
+    )
+
+    assert calibrated.confidence == "high"
+    assert fallback.confidence == "medium"
+    assert any("images=2@448px" in note for note in fallback.notes)
+
+
+def test_calibration_requires_nearby_model_size():
+    variant = GGUFVariant(
+        filename="qwen2.5-vl-120b-q4_k_m.gguf",
+        quant_type="Q4_K_M",
+        file_size_bytes=int(120_000_000_000 * 0.5625),
     )
     workload = VisionWorkload(image_count=1, image_size=448)
 
-    estimate = estimate_vram_details(model, None, vision_workload=workload)
+    estimate = estimate_vram_details(
+        vlm_calibration_model(params=120_000_000_000, architecture="qwen2_vl"),
+        variant,
+        vision_workload=workload,
+    )
 
     assert estimate.confidence == "medium"
-    assert estimate.notes == [
-        "no matching peak-memory calibration "
-        "(transformers, safetensors, AWQ, context=4096, images=1@448px)"
-    ]
+    assert any("no matching peak-memory calibration" in note for note in estimate.notes)
 
 
 def test_spatial_merge_reduces_vision_tokens():

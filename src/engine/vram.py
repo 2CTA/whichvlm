@@ -44,6 +44,7 @@ class VramEstimate:
 @dataclass(frozen=True)
 class VramCalibration:
     architecture: str
+    parameter_count: int
     backend: str
     quant_type: str | None
     model_format: str
@@ -52,6 +53,7 @@ class VramCalibration:
     image_size: int
     estimate_bytes: int
     measured_peak_bytes: int
+    is_moe: bool = False
 
 
 VRAM_RANGE_FACTORS: dict[VramConfidence, tuple[float, float]] = {
@@ -59,10 +61,12 @@ VRAM_RANGE_FACTORS: dict[VramConfidence, tuple[float, float]] = {
     "medium": (0.82, 1.28),
     "low": (0.65, 1.60),
 }
+MAX_CALIBRATION_PARAM_RATIO = 2.0
 
 VRAM_CALIBRATIONS: tuple[VramCalibration, ...] = (
     VramCalibration(
         architecture="llama",
+        parameter_count=7_000_000_000,
         backend="llama.cpp",
         quant_type="Q4_K_M",
         model_format="gguf",
@@ -74,6 +78,7 @@ VRAM_CALIBRATIONS: tuple[VramCalibration, ...] = (
     ),
     VramCalibration(
         architecture="mixtral",
+        parameter_count=46_700_000_000,
         backend="llama.cpp",
         quant_type="Q4_K_M",
         model_format="gguf",
@@ -82,9 +87,11 @@ VRAM_CALIBRATIONS: tuple[VramCalibration, ...] = (
         image_size=0,
         estimate_bytes=29_074_327_193,
         measured_peak_bytes=31_200_000_000,
+        is_moe=True,
     ),
     VramCalibration(
         architecture="qwen2vl",
+        parameter_count=7_000_000_000,
         backend="transformers",
         quant_type="FP16",
         model_format="safetensors",
@@ -93,6 +100,67 @@ VRAM_CALIBRATIONS: tuple[VramCalibration, ...] = (
         image_size=448,
         estimate_bytes=16_769_715_744,
         measured_peak_bytes=19_900_000_000,
+    ),
+    VramCalibration(
+        architecture="qwen2vl",
+        parameter_count=7_000_000_000,
+        backend="llama.cpp",
+        quant_type="Q4_K_M",
+        model_format="gguf",
+        context_length=4096,
+        image_count=1,
+        image_size=448,
+        estimate_bytes=7_269_715_744,
+        measured_peak_bytes=8_100_000_000,
+    ),
+    VramCalibration(
+        architecture="qwen2vl",
+        parameter_count=7_000_000_000,
+        backend="transformers",
+        quant_type="AWQ",
+        model_format="safetensors",
+        context_length=4096,
+        image_count=1,
+        image_size=448,
+        estimate_bytes=6_794_715_744,
+        measured_peak_bytes=8_200_000_000,
+    ),
+    VramCalibration(
+        architecture="internvl",
+        parameter_count=8_000_000_000,
+        backend="transformers",
+        quant_type="FP16",
+        model_format="safetensors",
+        context_length=4096,
+        image_count=1,
+        image_size=448,
+        estimate_bytes=19_425_694_720,
+        measured_peak_bytes=21_800_000_000,
+    ),
+    VramCalibration(
+        architecture="gemma",
+        parameter_count=27_000_000_000,
+        backend="transformers",
+        quant_type="GPTQ",
+        model_format="safetensors",
+        context_length=4096,
+        image_count=1,
+        image_size=448,
+        estimate_bytes=23_774_270_912,
+        measured_peak_bytes=27_100_000_000,
+    ),
+    VramCalibration(
+        architecture="qwen3",
+        parameter_count=30_000_000_000,
+        backend="llama.cpp",
+        quant_type="Q4_K_M",
+        model_format="gguf",
+        context_length=4096,
+        image_count=0,
+        image_size=0,
+        estimate_bytes=19_779_537_766,
+        measured_peak_bytes=21_300_000_000,
+        is_moe=True,
     ),
 )
 
@@ -137,6 +205,11 @@ def quant_type(model: ModelInfo, variant: GGUFVariant | None) -> str | None:
     if model.quantization_type:
         return model.quantization_type.upper()
     return infer_non_gguf_quant_type(model.id)
+
+
+def calibration_architecture_key(architecture: str) -> str:
+    key = architecture.lower().replace("_", "").replace("-", "").replace(".", "")
+    return key.replace("qwen25vl", "qwen2vl")
 
 
 def has_kv_shape(model: ModelInfo) -> bool:
@@ -225,9 +298,16 @@ def calibration_match(
     fmt = model_format(model, variant)
     backend = backend_name(model, variant)
     quant = quant_type(model, variant)
-    architecture = model.architecture.lower()
+    architecture = calibration_architecture_key(model.architecture)
     for sample in VRAM_CALIBRATIONS:
-        if not architecture.startswith(sample.architecture):
+        sample_architecture = calibration_architecture_key(sample.architecture)
+        if not architecture.startswith(sample_architecture):
+            continue
+        if sample.is_moe != model.is_moe:
+            continue
+        smaller_params = min(model.parameter_count, sample.parameter_count)
+        larger_params = max(model.parameter_count, sample.parameter_count)
+        if larger_params > smaller_params * MAX_CALIBRATION_PARAM_RATIO:
             continue
         if sample.backend != backend or sample.model_format != fmt:
             continue
