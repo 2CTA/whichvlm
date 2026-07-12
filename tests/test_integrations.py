@@ -10,8 +10,9 @@ from models.integrations import (
     capabilities_for_data,
     integration_ids_for_capabilities,
     runtime_backends_for_capabilities,
+    runtime_backends_for_data,
 )
-from runtime import generate_run_script, resolve_model_deps
+from runtime import generate_run_script, recommended_runtime_backend, resolve_model_deps
 
 
 def linux_cuda_hardware() -> HardwareInfo:
@@ -133,6 +134,107 @@ def test_parse_model_uses_registered_audio_profile_without_runtime_claim():
     assert "audio" in detect_specializations(model)
     assert "audio_encoder" in {component.role for component in model.components}
     assert runtime_backends_for_capabilities(model.capabilities) == []
+
+
+def test_qwen25_vl_video_profile_has_transformers_runtime_path():
+    model = parse_model(
+        {
+            "id": "Qwen/Qwen2.5-VL-7B-Instruct",
+            "pipeline_tag": "image-text-to-text",
+            "tags": ["safetensors"],
+            "config": {"architectures": ["Qwen2_5_VLForConditionalGeneration"]},
+            "safetensors": {"total": 7_000_000_000},
+            "siblings": [],
+            "cardData": {},
+        }
+    )
+
+    assert model is not None
+    assert model.capabilities.image is True
+    assert model.capabilities.video is True
+    assert "video-language" in integration_ids_for_capabilities(model.capabilities)
+    assert runtime_backends_for_data(
+        model.id,
+        model.hf_pipeline_tag,
+        model.tags,
+        model.architecture,
+    ) == ["transformers", "llama.cpp", "mlx", "vllm", "sglang"]
+
+    deps, script_type = resolve_model_deps(
+        model,
+        None,
+        backend_name="transformers",
+        hardware=linux_cuda_hardware(),
+    )
+    script = generate_run_script(
+        model,
+        None,
+        4096,
+        False,
+        video_path="/tmp/video.mp4",
+        backend_name="transformers",
+        hardware=linux_cuda_hardware(),
+    )
+
+    assert recommended_runtime_backend(model, None, linux_cuda_hardware()) == "vllm"
+    assert "torchvision" in deps
+    assert "qwen-vl-utils" in deps
+    assert script_type == "transformers_vlm"
+    assert "Qwen2_5_VLForConditionalGeneration" in script
+    assert "video_path = '/tmp/video.mp4'" in script
+    assert '{"type": "video", "video": video_uri, "fps": 1.0}' in script
+    assert "process_vision_info" in script
+
+
+def test_qwen2_audio_profile_has_transformers_runtime_path():
+    model = parse_model(
+        {
+            "id": "Qwen/Qwen2-Audio-7B-Instruct",
+            "pipeline_tag": "audio-text-to-text",
+            "tags": ["safetensors"],
+            "config": {"architectures": ["Qwen2AudioForConditionalGeneration"]},
+            "safetensors": {"total": 7_000_000_000},
+            "siblings": [],
+            "cardData": {},
+        }
+    )
+
+    assert model is not None
+    assert model.capabilities.audio is True
+    assert "audio-language" in integration_ids_for_capabilities(model.capabilities)
+    assert runtime_backends_for_capabilities(model.capabilities) == []
+    assert runtime_backends_for_data(
+        model.id,
+        model.hf_pipeline_tag,
+        model.tags,
+        model.architecture,
+    ) == ["transformers"]
+
+    deps, script_type = resolve_model_deps(
+        model,
+        None,
+        backend_name="transformers",
+        hardware=linux_cuda_hardware(),
+    )
+    script = generate_run_script(
+        model,
+        None,
+        4096,
+        False,
+        audio_path="/tmp/audio.wav",
+        backend_name="transformers",
+        hardware=linux_cuda_hardware(),
+    )
+
+    assert (
+        recommended_runtime_backend(model, None, linux_cuda_hardware())
+        == "transformers"
+    )
+    assert "librosa" in deps
+    assert script_type == "transformers_audio"
+    assert "Qwen2AudioForConditionalGeneration" in script
+    assert "audio_path = '/tmp/audio.wav'" in script
+    assert "audios=[audio]" in script
 
 
 def test_parse_model_uses_registered_chart_profile_with_image_runtime():

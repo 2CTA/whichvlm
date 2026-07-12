@@ -872,6 +872,28 @@ def make_vlm_model(model_id="Qwen/Qwen2.5-VL-7B-Instruct"):
     )
 
 
+def make_video_model(model_id="Qwen/Qwen2.5-VL-7B-Instruct"):
+    return ModelInfo(
+        id=model_id,
+        family_id="qwen-vl",
+        name="Qwen2.5-VL-7B-Instruct",
+        parameter_count=7_000_000_000,
+        architecture="qwen2_5_vl",
+        hf_pipeline_tag="video-text-to-text",
+    )
+
+
+def make_audio_model(model_id="Qwen/Qwen2-Audio-7B-Instruct"):
+    return ModelInfo(
+        id=model_id,
+        family_id="qwen2-audio",
+        name="Qwen2-Audio-7B-Instruct",
+        parameter_count=7_000_000_000,
+        architecture="qwen2audio",
+        hf_pipeline_tag="audio-text-to-text",
+    )
+
+
 def test_search_model_exact_match():
     models = [make_model("org/Llama-8B"), make_model("org/Qwen-7B")]
     result = resolve_model_match(models, "org/Llama-8B")
@@ -1269,6 +1291,77 @@ def test_run_vlm_requires_image(monkeypatch):
 
     assert result.exit_code == 1
     assert "VLM models require --image PATH" in result.stdout
+    assert "--video PATH" not in result.stdout
+
+
+def test_run_qwen25_video_passes_video_path(monkeypatch):
+    model = make_video_model()
+    captured: dict[str, object] = {}
+
+    def fake_run_request(request, backend_name=None):
+        captured["video_path"] = request.video_path
+        captured["image_path"] = request.image_path
+        captured["backend_name"] = backend_name
+        return 0
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/uv")
+    monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [model])
+    monkeypatch.setattr(cli_mod, "run_request", fake_run_request)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "Qwen/Qwen2.5-VL-7B-Instruct",
+            "--video",
+            "/tmp/video.mp4",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["video_path"] == "/tmp/video.mp4"
+    assert captured["image_path"] is None
+    assert captured["backend_name"] == "transformers"
+
+
+def test_run_qwen2_audio_passes_audio_path(monkeypatch):
+    model = make_audio_model()
+    captured: dict[str, object] = {}
+
+    def fake_run_request(request, backend_name=None):
+        captured["audio_path"] = request.audio_path
+        captured["backend_name"] = backend_name
+        return 0
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/uv")
+    monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [model])
+    monkeypatch.setattr(cli_mod, "run_request", fake_run_request)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "Qwen/Qwen2-Audio-7B-Instruct",
+            "--audio",
+            "/tmp/audio.wav",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["audio_path"] == "/tmp/audio.wav"
+    assert captured["backend_name"] == "transformers"
+
+
+def test_run_qwen2_audio_requires_audio_path(monkeypatch):
+    model = make_audio_model()
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/uv")
+    monkeypatch.setattr(cli_mod, "load_model_catalog", lambda refresh: [model])
+
+    result = CliRunner().invoke(app, ["run", "Qwen/Qwen2-Audio-7B-Instruct"])
+
+    assert result.exit_code == 1
+    assert "Audio models require --audio PATH" in result.stdout
 
 
 def test_serve_gguf_model_uses_server_request(monkeypatch):
@@ -1390,6 +1483,8 @@ def test_snippet_passes_context_length_and_max_tokens(monkeypatch):
         context_length,
         cpu_only,
         image_path=None,
+        video_path=None,
+        audio_path=None,
         max_tokens=512,
         backend_name=None,
         hardware=None,

@@ -20,7 +20,9 @@ from runtime import (
     auto_gpu_memory_utilization,
     generate_run_script,
     normalize_backend_name,
+    requires_audio,
     requires_image,
+    requires_video,
     resolve_model_deps,
     run_request,
     select_backend,
@@ -1375,6 +1377,12 @@ def run(
     image: Optional[str] = typer.Option(
         None, "--image", "-i", help="Image path for VLM runners"
     ),
+    video: Optional[str] = typer.Option(
+        None, "--video", help="Video path for supported video-language runners"
+    ),
+    audio: Optional[str] = typer.Option(
+        None, "--audio", help="Audio path for supported audio-language runners"
+    ),
     backend_name: Optional[str] = typer.Option(
         None,
         "--backend",
@@ -1493,8 +1501,19 @@ def run(
     assert model is not None
     if variant is None and should_select_gguf(backend_name):
         variant = select_gguf_variant(model, quant)
-    if requires_image(model) and image is None:
+    if requires_audio(model) and audio is None:
+        console.print("[red]Error:[/] Audio models require --audio PATH.")
+        raise typer.Exit(code=1)
+    if requires_image(model) and image is None and video is None:
+        if requires_video(model):
+            console.print(
+                "[red]Error:[/] VLM models require --image PATH or --video PATH."
+            )
+            raise typer.Exit(code=1)
         console.print("[red]Error:[/] VLM models require --image PATH.")
+        raise typer.Exit(code=1)
+    if requires_video(model) and video is None and not requires_image(model):
+        console.print("[red]Error:[/] Video models require --video PATH.")
         raise typer.Exit(code=1)
     try:
         if hardware is None and (
@@ -1533,6 +1552,8 @@ def run(
             context_length=context_length,
             cpu_only=cpu_only,
             image_path=image,
+            video_path=video,
+            audio_path=audio,
             max_tokens=max_tokens,
             hardware=hardware,
             gpu_memory_utilization=runtime_gpu_memory_utilization,
@@ -1651,6 +1672,12 @@ def snippet(
     image: Optional[str] = typer.Option(
         None, "--image", "-i", help="Image path for VLM snippets"
     ),
+    video: Optional[str] = typer.Option(
+        None, "--video", help="Video path for supported video-language snippets"
+    ),
+    audio: Optional[str] = typer.Option(
+        None, "--audio", help="Audio path for supported audio-language snippets"
+    ),
     backend_name: Optional[str] = typer.Option(
         None,
         "--backend",
@@ -1688,8 +1715,19 @@ def snippet(
     variant = (
         select_gguf_variant(model, quant) if should_select_gguf(backend_name) else None
     )
-    if requires_image(model) and image is None:
+    if requires_audio(model) and audio is None:
+        console.print("[red]Error:[/] Audio models require --audio PATH.")
+        raise typer.Exit(code=1)
+    if requires_image(model) and image is None and video is None:
+        if requires_video(model):
+            console.print(
+                "[red]Error:[/] VLM models require --image PATH or --video PATH."
+            )
+            raise typer.Exit(code=1)
         console.print("[red]Error:[/] VLM models require --image PATH.")
+        raise typer.Exit(code=1)
+    if requires_video(model) and video is None and not requires_image(model):
+        console.print("[red]Error:[/] Video models require --video PATH.")
         raise typer.Exit(code=1)
     try:
         hardware = None
@@ -1714,6 +1752,8 @@ def snippet(
             context_length,
             False,
             image_path=image,
+            video_path=video,
+            audio_path=audio,
             max_tokens=max_tokens,
             backend_name=backend.name,
             hardware=hardware,

@@ -28,6 +28,13 @@ VLM_FAMILY_SEEDS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
             "qwen3vl",
         ),
     },
+    "qwen2-audio": {
+        "canonical": (
+            "Qwen/Qwen2-Audio-7B",
+            "Qwen/Qwen2-Audio-7B-Instruct",
+        ),
+        "aliases": ("qwen2-audio", "qwen2audio"),
+    },
     "internvl": {
         "canonical": (
             "OpenGVLab/InternVL2_5-78B",

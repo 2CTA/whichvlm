@@ -15,7 +15,9 @@ from models.integrations import (
     capabilities_for_data,
     pipeline_tag_has_audio_input,
     pipeline_tag_has_image_input,
+    pipeline_tag_has_video_input,
     pipeline_tag_has_visual_input,
+    runtime_backends_for_data,
 )
 from models.package_graph import is_projector_filename
 from models.types import GGUFVariant, ModelArtifact, ModelInfo
@@ -32,6 +34,8 @@ class RuntimeRequest:
     context_length: int
     cpu_only: bool
     image_path: str | None = None
+    video_path: str | None = None
+    audio_path: str | None = None
     max_tokens: int = 512
     hardware: HardwareInfo | None = None
     script_path: str | None = None
@@ -76,6 +80,7 @@ TRANSFORMERS_VLM_FAMILIES = frozenset(
         "llava",
     }
 )
+TRANSFORMERS_AUDIO_FAMILIES = frozenset({"qwen2-audio"})
 VLLM_VLM_FAMILIES = frozenset(
     {
         "qwen-vl",
@@ -109,7 +114,7 @@ COMPATIBILITY_MATRIX = (
     ),
     CompatibilityRule(
         "transformers",
-        TRANSFORMERS_VLM_FAMILIES,
+        TRANSFORMERS_VLM_FAMILIES | TRANSFORMERS_AUDIO_FAMILIES,
         frozenset({"transformers"}),
         ALL_OSES,
         frozenset({"cpu", "cuda", "rocm", "mps"}),
@@ -278,6 +283,65 @@ def is_vlm_model(model: ModelInfo) -> bool:
     return any(component.role == "vision_encoder" for component in model.components)
 
 
+def has_video_input(model: ModelInfo) -> bool:
+    if model.capabilities.video:
+        return True
+    if capabilities_for_data(
+        model.id,
+        model.hf_pipeline_tag,
+        model.tags,
+        model.architecture,
+    ).video:
+        return True
+    if pipeline_tag_has_video_input(model.hf_pipeline_tag):
+        return True
+    return any(component.role == "video_encoder" for component in model.components)
+
+
+def has_audio_input(model: ModelInfo) -> bool:
+    if model.capabilities.audio:
+        return True
+    if capabilities_for_data(
+        model.id,
+        model.hf_pipeline_tag,
+        model.tags,
+        model.architecture,
+    ).audio:
+        return True
+    if pipeline_tag_has_audio_input(model.hf_pipeline_tag):
+        return True
+    return any(
+        component.role in AUDIO_COMPONENT_ROLES for component in model.components
+    )
+
+
+def transformers_runtime_backends(model: ModelInfo) -> list[str]:
+    return runtime_backends_for_data(
+        model.id,
+        model.hf_pipeline_tag,
+        model.tags,
+        model.architecture,
+    )
+
+
+def is_transformers_video_model(model: ModelInfo) -> bool:
+    return has_video_input(model) and "transformers" in transformers_runtime_backends(
+        model
+    )
+
+
+def is_transformers_audio_model(model: ModelInfo) -> bool:
+    return has_audio_input(model) and "transformers" in transformers_runtime_backends(
+        model
+    )
+
+
+def prefers_transformers_video_script(model: ModelInfo) -> bool:
+    return is_transformers_video_model(model) and (
+        model.hf_pipeline_tag == "video-text-to-text" or not is_vlm_model(model)
+    )
+
+
 def is_media_only_model(model: ModelInfo) -> bool:
     if is_vlm_model(model):
         return False
@@ -305,6 +369,14 @@ def requires_image(model: ModelInfo) -> bool:
     return is_vlm_model(model)
 
 
+def requires_video(model: ModelInfo) -> bool:
+    return is_transformers_video_model(model)
+
+
+def requires_audio(model: ModelInfo) -> bool:
+    return is_transformers_audio_model(model)
+
+
 def resolve_model_deps(
     model: ModelInfo,
     variant: GGUFVariant | None,
@@ -317,8 +389,13 @@ def resolve_model_deps(
         script_type = "gguf_vlm" if is_vlm_model(model) else "gguf"
     elif script_type == "mlx":
         script_type = "mlx_vlm"
-    elif script_type == "transformers" and is_vlm_model(model):
-        script_type = "transformers_vlm"
+    elif script_type == "transformers":
+        if is_transformers_audio_model(model):
+            script_type = "transformers_audio"
+        elif prefers_transformers_video_script(model):
+            script_type = "transformers_video"
+        elif is_vlm_model(model):
+            script_type = "transformers_vlm"
     return backend.dependencies(model, variant), script_type
 
 
@@ -328,6 +405,8 @@ def generate_run_script(
     context_length: int,
     cpu_only: bool,
     image_path: str | None = None,
+    video_path: str | None = None,
+    audio_path: str | None = None,
     max_tokens: int = 512,
     backend_name: str | None = None,
     hardware: HardwareInfo | None = None,
@@ -340,6 +419,8 @@ def generate_run_script(
         context_length=context_length,
         cpu_only=cpu_only,
         image_path=image_path,
+        video_path=video_path,
+        audio_path=audio_path,
         max_tokens=max_tokens,
         hardware=hardware,
         gpu_memory_utilization=gpu_memory_utilization,
@@ -727,9 +808,11 @@ class TransformersBackend(Backend):
         artifact: GGUFVariant | None,
         hardware: HardwareInfo | None,
     ) -> bool:
-        if is_media_only_model(model):
-            return False
         if artifact is not None or is_mlx_model(model):
+            return False
+        if is_transformers_audio_model(model) or is_transformers_video_model(model):
+            return matrix_supports(self.name, model, artifact, hardware)
+        if is_media_only_model(model):
             return False
         if not is_vlm_model(model):
             return True
@@ -740,8 +823,17 @@ class TransformersBackend(Backend):
         model: ModelInfo,
         artifact: GGUFVariant | None,
     ) -> list[str]:
-        if is_vlm_model(model):
+        if is_transformers_audio_model(model):
             return [
+                "transformers",
+                "torch",
+                "accelerate",
+                "librosa",
+                "psutil",
+                *transformers_quant_deps(model),
+            ]
+        if is_vlm_model(model):
+            deps = [
                 "transformers",
                 "torch",
                 "torchvision",
@@ -750,13 +842,51 @@ class TransformersBackend(Backend):
                 "psutil",
                 *transformers_quant_deps(model),
             ]
+            if is_transformers_video_model(model):
+                deps.append("qwen-vl-utils")
+            return deps
+        if is_transformers_video_model(model):
+            return [
+                "transformers",
+                "torch",
+                "torchvision",
+                "accelerate",
+                "qwen-vl-utils",
+                "psutil",
+                *transformers_quant_deps(model),
+            ]
 
         base = ["transformers", "torch", "accelerate", "psutil"]
         return [*base, *transformers_quant_deps(model)]
 
     def generate_script(self, request: RuntimeRequest) -> str:
+        if is_transformers_audio_model(request.model):
+            if request.audio_path is None:
+                raise RuntimeUnsupportedError("Audio runners require --audio PATH.")
+            return generate_transformers_audio_script(
+                request.model,
+                request.audio_path,
+                request.cpu_only,
+                request.max_tokens,
+                request.gpu_memory_utilization,
+            )
+        if (
+            is_transformers_video_model(request.model)
+            and request.video_path is not None
+        ):
+            return generate_transformers_video_script(
+                request.model,
+                request.video_path,
+                request.cpu_only,
+                request.max_tokens,
+                request.gpu_memory_utilization,
+            )
         if is_vlm_model(request.model):
             if request.image_path is None:
+                if is_transformers_video_model(request.model):
+                    raise RuntimeUnsupportedError(
+                        "VLM runners require --image PATH or --video PATH."
+                    )
                 raise RuntimeUnsupportedError("VLM runners require --image PATH.")
             return generate_transformers_vlm_script(
                 request.model,
@@ -765,6 +895,8 @@ class TransformersBackend(Backend):
                 request.max_tokens,
                 request.gpu_memory_utilization,
             )
+        if is_transformers_video_model(request.model):
+            raise RuntimeUnsupportedError("Video runners require --video PATH.")
         return generate_transformers_text_script(
             request.model,
             request.cpu_only,
@@ -786,6 +918,7 @@ class VLLMBackend(Backend):
         return (
             hardware is not None
             and artifact is None
+            and model.hf_pipeline_tag != "video-text-to-text"
             and is_vlm_model(model)
             and matrix_supports(self.name, model, artifact, hardware)
         )
@@ -857,6 +990,7 @@ class SGLangBackend(Backend):
         return (
             hardware is not None
             and artifact is None
+            and model.hf_pipeline_tag != "video-text-to-text"
             and is_vlm_model(model)
             and matrix_supports(self.name, model, artifact, hardware)
         )
@@ -1441,6 +1575,202 @@ try:
         full = "".join(output_parts)
         print()
         print_decode_metrics(started_at, first_token_at, full)
+    print("\\nBye!")
+finally:
+    shutil.rmtree(offload_folder, ignore_errors=True)
+'''
+
+
+def generate_transformers_video_script(
+    model: ModelInfo,
+    video_path: str,
+    cpu_only: bool,
+    max_tokens: int,
+    gpu_memory_utilization: float | None = None,
+) -> str:
+    device_map = '"cpu"' if cpu_only else '"auto"'
+    imports = transformers_import_names(
+        "Qwen2_5_VLForConditionalGeneration",
+        "AutoProcessor",
+        quantization_import_names(model),
+    )
+    processor_arg_lines = processor_kwargs_lines(
+        (
+            "min_pixels=256 * 28 * 28",
+            "max_pixels=1280 * 28 * 28",
+        )
+    )
+    runtime_setup = transformers_runtime_setup(
+        quantization_config_lines(model), gpu_memory_utilization
+    )
+    return f'''\
+import shutil
+import tempfile
+import time
+from pathlib import Path
+
+import psutil
+import torch
+from qwen_vl_utils import process_vision_info
+from transformers import {imports}
+
+model_id = "{model.id}"
+video_path = {video_path!r}
+video_uri = Path(video_path).expanduser().resolve().as_uri()
+device_map = {device_map}
+{runtime_setup}
+try:
+    print(f"Loading {{model_id}}...")
+    load_started_at = time.perf_counter()
+    processor = AutoProcessor.from_pretrained(
+        model_id,
+        trust_remote_code=True{processor_arg_lines},
+    )
+    tokenizer = processor.tokenizer
+    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_id, **model_kwargs)
+    model.eval()
+    print(f"Loaded in {{time.perf_counter() - load_started_at:.2f}}s")
+    print("Ready! Type 'exit' to quit.\\n")
+    while True:
+        try:
+            text = input("> ")
+        except (KeyboardInterrupt, EOFError):
+            break
+        if text.strip().lower() in ("exit", "quit", "q"):
+            break
+        if not text.strip():
+            continue
+        messages = [
+            {{
+                "role": "user",
+                "content": [
+                    {{"type": "video", "video": video_uri, "fps": 1.0}},
+                    {{"type": "text", "text": text}},
+                ],
+            }}
+        ]
+        prompt = processor.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=False,
+        )
+        image_inputs, video_inputs, video_kwargs = process_vision_info(
+            messages,
+            return_video_kwargs=True,
+        )
+        inputs = processor(
+            text=[prompt],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt",
+            **video_kwargs,
+        ).to(model.device)
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+        started_at = time.perf_counter()
+        with torch.inference_mode():
+            output_ids = model.generate(**inputs, max_new_tokens={max_tokens})
+        generated_ids = output_ids[:, inputs.input_ids.shape[-1]:]
+        output_text = processor.batch_decode(
+            generated_ids,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )[0]
+        print(output_text)
+        print_decode_metrics(started_at, None, output_text)
+    print("\\nBye!")
+finally:
+    shutil.rmtree(offload_folder, ignore_errors=True)
+'''
+
+
+def generate_transformers_audio_script(
+    model: ModelInfo,
+    audio_path: str,
+    cpu_only: bool,
+    max_tokens: int,
+    gpu_memory_utilization: float | None = None,
+) -> str:
+    device_map = '"cpu"' if cpu_only else '"auto"'
+    imports = transformers_import_names(
+        "Qwen2AudioForConditionalGeneration",
+        "AutoProcessor",
+        quantization_import_names(model),
+    )
+    runtime_setup = transformers_runtime_setup(
+        quantization_config_lines(model), gpu_memory_utilization
+    )
+    return f'''\
+import shutil
+import tempfile
+import time
+
+import librosa
+import psutil
+import torch
+from transformers import {imports}
+
+model_id = "{model.id}"
+audio_path = {audio_path!r}
+device_map = {device_map}
+{runtime_setup}
+try:
+    print(f"Loading {{model_id}}...")
+    load_started_at = time.perf_counter()
+    processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+    tokenizer = processor.tokenizer
+    model = Qwen2AudioForConditionalGeneration.from_pretrained(model_id, **model_kwargs)
+    model.eval()
+    audio, _ = librosa.load(
+        audio_path,
+        sr=processor.feature_extractor.sampling_rate,
+    )
+    print(f"Loaded in {{time.perf_counter() - load_started_at:.2f}}s")
+    print("Ready! Type 'exit' to quit.\\n")
+    while True:
+        try:
+            text = input("> ")
+        except (KeyboardInterrupt, EOFError):
+            break
+        if text.strip().lower() in ("exit", "quit", "q"):
+            break
+        if not text.strip():
+            continue
+        conversation = [
+            {{
+                "role": "user",
+                "content": [
+                    {{"type": "audio", "audio_url": audio_path}},
+                    {{"type": "text", "text": text}},
+                ],
+            }}
+        ]
+        prompt = processor.apply_chat_template(
+            conversation,
+            add_generation_prompt=True,
+            tokenize=False,
+        )
+        inputs = processor(
+            text=prompt,
+            audios=[audio],
+            return_tensors="pt",
+            padding=True,
+        ).to(model.device)
+        inputs.input_ids = inputs.input_ids.to(model.device)
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+        started_at = time.perf_counter()
+        with torch.inference_mode():
+            output_ids = model.generate(**inputs, max_new_tokens={max_tokens})
+        generated_ids = output_ids[:, inputs.input_ids.shape[-1]:]
+        output_text = processor.batch_decode(
+            generated_ids,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )[0]
+        print(output_text)
+        print_decode_metrics(started_at, None, output_text)
     print("\\nBye!")
 finally:
     shutil.rmtree(offload_folder, ignore_errors=True)

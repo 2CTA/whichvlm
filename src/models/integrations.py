@@ -17,6 +17,14 @@ class IntegrationProfile:
     runtime_backends: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class RuntimeBackendProfile:
+    runtime_id: str
+    capability_names: tuple[str, ...]
+    tag_patterns: tuple[str, ...]
+    runtime_backends: tuple[str, ...]
+
+
 IMAGE_PIPELINE_TAGS = (
     "image-text-to-text",
     "visual-question-answering",
@@ -70,6 +78,7 @@ INTEGRATION_PROFILES: tuple[IntegrationProfile, ...] = (
         tag_patterns=(
             r"(^|[-_/\s])(video|videomme|mvbench|activitynet|nextqa)([-_/\s]|$)",
             r"onevision",
+            r"qwen2[._-]?5[._-]?vl",
         ),
         component_roles=("language", "video_encoder", "projector", "processor"),
         workload_tasks=("video",),
@@ -86,6 +95,27 @@ INTEGRATION_PROFILES: tuple[IntegrationProfile, ...] = (
         component_roles=("language", "audio_encoder", "processor"),
         workload_tasks=("audio",),
         runtime_backends=(),
+    ),
+)
+
+RUNTIME_BACKEND_PROFILES: tuple[RuntimeBackendProfile, ...] = (
+    RuntimeBackendProfile(
+        runtime_id="qwen2.5-vl-video-transformers",
+        capability_names=("video",),
+        tag_patterns=(
+            r"qwen2[._-]?5[._-]?vl",
+            r"qwen2_5_vlforconditionalgeneration",
+        ),
+        runtime_backends=("transformers",),
+    ),
+    RuntimeBackendProfile(
+        runtime_id="qwen2-audio-transformers",
+        capability_names=("audio",),
+        tag_patterns=(
+            r"qwen2[-_]?audio",
+            r"qwen2audioforconditionalgeneration",
+        ),
+        runtime_backends=("transformers",),
     ),
 )
 
@@ -114,6 +144,19 @@ def _matches_profile(
     return any(re.search(pattern, haystack) for pattern in profile.tag_patterns)
 
 
+def _matches_runtime_profile(
+    profile: RuntimeBackendProfile,
+    model_id: str,
+    pipeline_tag: object,
+    tags: list[str],
+    architecture: str = "",
+) -> bool:
+    haystack = " ".join(
+        [model_id, str(pipeline_tag or ""), *tags, architecture]
+    ).lower()
+    return any(re.search(pattern, haystack) for pattern in profile.tag_patterns)
+
+
 def matching_profiles_for_data(
     model_id: str,
     pipeline_tag: object,
@@ -124,6 +167,25 @@ def matching_profiles_for_data(
         profile
         for profile in INTEGRATION_PROFILES
         if _matches_profile(profile, model_id, pipeline_tag, tags, architecture)
+    ]
+
+
+def matching_runtime_profiles_for_data(
+    model_id: str,
+    pipeline_tag: object,
+    tags: list[str],
+    architecture: str = "",
+) -> list[RuntimeBackendProfile]:
+    capability_names = set(
+        capability_names_for_data(model_id, pipeline_tag, tags, architecture)
+    )
+    return [
+        profile
+        for profile in RUNTIME_BACKEND_PROFILES
+        if capability_names & set(profile.capability_names)
+        and _matches_runtime_profile(
+            profile, model_id, pipeline_tag, tags, architecture
+        )
     ]
 
 
@@ -210,6 +272,27 @@ def runtime_backends_for_capabilities(capabilities: ModelCapabilities) -> list[s
     return backends
 
 
+def runtime_backends_for_data(
+    model_id: str,
+    pipeline_tag: object,
+    tags: list[str],
+    architecture: str = "",
+) -> list[str]:
+    backends: list[str] = []
+    for integration_profile in matching_profiles_for_data(
+        model_id, pipeline_tag, tags, architecture
+    ):
+        _append_unique(backends, integration_profile.runtime_backends)
+    for runtime_profile in matching_runtime_profiles_for_data(
+        model_id,
+        pipeline_tag,
+        tags,
+        architecture,
+    ):
+        _append_unique(backends, runtime_profile.runtime_backends)
+    return backends
+
+
 def pipeline_tags_for_capabilities(capabilities: tuple[str, ...]) -> tuple[str, ...]:
     tags: list[str] = []
     for profile in INTEGRATION_PROFILES:
@@ -270,6 +353,10 @@ def pipeline_tag_has_visual_input(pipeline_tag: object) -> bool:
 
 def pipeline_tag_has_image_input(pipeline_tag: object) -> bool:
     return pipeline_tag in set(pipeline_tags_for_capabilities(("image",)))
+
+
+def pipeline_tag_has_video_input(pipeline_tag: object) -> bool:
+    return pipeline_tag in VIDEO_PIPELINE_TAGS
 
 
 def pipeline_tag_has_audio_input(pipeline_tag: object) -> bool:
